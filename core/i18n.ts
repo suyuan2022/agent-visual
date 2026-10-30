@@ -11,7 +11,7 @@ const ZH: Record<string, string> = {
   ' done  ': ' 已完成  ',
   ' critical': ' 关键',
   'Open image': '打开原图',
-  'Image not found': '图片不存在',
+  'Image not found': '找不到图片',
 }
 
 let current: Lang = 'en'
@@ -37,13 +37,13 @@ export function replyLang(text: string): Lang {
   return /[\u4e00-\u9fff]/.test(prose) ? 'zh' : 'en'
 }
 
-/** Why a diagram was not drawn, as one line the user can act on. */
+/** Why a diagram is shown as source: state only, no instructions. */
 export function tooWideNote(lang: Lang = current): string {
-  return lang === 'zh' ? '窗口太窄，拉宽一些就能看到图' : 'Window too narrow; widen it to see the diagram'
+  return lang === 'zh' ? '当前宽度无法显示图表' : "Diagram can't be displayed at this width"
 }
 
 export function notDrawnNote(warning: string, more: number, lang: Lang = current): string {
   return lang === 'zh'
-    ? `这张图没画出来：${warning}${more > 0 ? `（另有 ${more} 条）` : ''}`
-    : `This diagram was not drawn: ${warning}${more > 0 ? ` (+${more} more)` : ''}`
+    ? `无法显示图表：${warning}${more > 0 ? `（另有 ${more} 处）` : ''}`
+    : `Diagram can't be displayed: ${warning}${more > 0 ? ` (+${more} more)` : ''}`
 }

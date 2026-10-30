@@ -68,10 +68,10 @@ test('too narrow frames the source and says why, in the reply language', async (
   const ui = await $.ui.mount({ plugin: 'agent-visual', surface: 'terminal', component: 'AssistantMessage', props: { text: REPLY, isFirstOfReply: true }, viewport: { columns: 14, rows: 40 } })
   expect(await ui.find({ type: 'Markdown', text: /```mermaid/ })).toBeUndefined()
   expect(await ui.find({ type: 'Text', text: /mermaid: flowchart/ })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: /窗口太窄/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /当前宽度无法显示图表/ })).toBeDefined()
   await ui.unmount()
   const en = await $.ui.mount({ plugin: 'agent-visual', surface: 'terminal', component: 'AssistantMessage', props: { text: REPLY.replace('先看流程：', 'The flow:').replace('就这样。', 'Done.'), isFirstOfReply: true }, viewport: { columns: 14, rows: 40 } })
-  expect(await en.find({ type: 'Text', text: /Window too narrow/ })).toBeDefined()
+  expect(await en.find({ type: 'Text', text: /can't be displayed at this width/ })).toBeDefined()
   await en.unmount()
 })
 
@@ -130,7 +130,7 @@ test('a missing image says so; a terminal without pictures gets the link alone',
   mock.env(on, { TERM_PROGRAM: 'Apple_Terminal', TERM: 'xterm-256color', HOME: '/Users/nobody' })
   const text = `![没有](/no/such/file.png)\n\n![有](${PIC})`
   const ui = await $.ui.mount({ plugin: 'agent-visual', surface: 'terminal', component: 'AssistantMessage', props: { text, isFirstOfReply: true }, viewport })
-  expect(await ui.find({ type: 'Text', text: '图片不存在：/no/such/file.png' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: '找不到图片：/no/such/file.png' })).toBeDefined()
   expect(await ui.find({ type: 'Image' })).toBeUndefined()
   expect(await ui.find({ type: 'Link', text: '打开原图：有' })).toBeDefined()
   await ui.unmount()

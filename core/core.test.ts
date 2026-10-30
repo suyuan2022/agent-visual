@@ -66,7 +66,7 @@ test('too wide left to right is drawn top-down, and too wide either way frames t
   expect(width(lr) > width(td)).toBe(true)
   const narrow = fit(WIDE_LR, 10)
   expect(narrow.kind).toBe('box')
-  expect(narrow.kind === 'box' ? narrow.note : '').toContain('Window too narrow')
+  expect(narrow.kind === 'box' ? narrow.note : '').toContain("can't be displayed at this width")
   expect(narrow.art.plain[0]).toContain('mermaid: flowchart')
 })
 
@@ -82,7 +82,7 @@ test('gantt is drawn by default, the uncommon types only when experimental; a dr
   // The stricter grammars retry once without their last line, the one a half-typed source ends on.
   const broken = fit('stateDiagram-v2\n  A --> B\n  this is not a statement', 120)
   expect(broken.kind).toBe('box')
-  expect(broken.kind === 'box' ? broken.note : '').toContain('This diagram was not drawn')
+  expect(broken.kind === 'box' ? broken.note : '').toContain("Diagram can't be displayed:")
 })
 
 test('the colorless path swaps drawn blocks for text fences and leaves the rest', async () => {
@@ -243,9 +243,9 @@ test('notes and drawn words follow the reply language: Chinese prose gets Chines
   expect(replyLang('Here it is\n\n\`\`\`mermaid\ngraph TD\n  A[中文] --> B\n\`\`\`')).toBe('en')
   const wide = 'graph TD\n  A --> B & C & D & E & F & G & H'
   const zh = fit(wide, 10, { lang: 'zh' })
-  expect(zh.kind === 'box' ? zh.note : '').toContain('窗口太窄')
+  expect(zh.kind === 'box' ? zh.note : '').toContain('当前宽度无法显示图表')
   const en = fit(wide, 10)
-  expect(en.kind === 'box' ? en.note : '').toContain('Window too narrow')
+  expect(en.kind === 'box' ? en.note : '').toContain("can't be displayed at this width")
   const gantt = 'gantt\n  dateFormat YYYY-MM-DD\n  A :a, 2024-01-01, 3d\n  B :crit, 2024-01-02, 2d'
   expect(fit(gantt, 100, { lang: 'zh' }).art.plain.join('\n')).toContain('已完成')
   expect(fit(gantt, 100).art.plain.join('\n')).toContain('done')
