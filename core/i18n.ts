@@ -38,10 +38,8 @@ export function replyLang(text: string): Lang {
 }
 
 /** Why a diagram was not drawn, as one line the user can act on. */
-export function tooWideNote(width: number, columns: number, lang: Lang = current): string {
-  return lang === 'zh'
-    ? `这张图要 ${width} 列宽，窗口只有 ${columns} 列，放不下。把窗口拉宽到 ${width} 列以上就会画出来。`
-    : `This diagram needs ${width} columns; the window has ${columns}. Widen the window past ${width} columns and it will be drawn.`
+export function tooWideNote(lang: Lang = current): string {
+  return lang === 'zh' ? '窗口太窄，拉宽一些就能看到图' : 'Window too narrow; widen it to see the diagram'
 }
 
 export function notDrawnNote(warning: string, more: number, lang: Lang = current): string {

@@ -136,7 +136,7 @@ export function fit(source: string, columns: number, options: FitOptions = {}): 
 
 function fitIn(source: string, columns: number, options: FitOptions): Fit {
   const boxed = (note?: string): Fit => ({ kind: 'box', art: sourceBox(source, columns), note })
-  const tooWide = (w: number) => tooWideNote(w, columns)
+  const tooWide = (_w: number) => tooWideNote()
   const keyword = (keywordOf(source) ?? '').toLowerCase()
   const extra = options.experimental === true || DEFAULT_EXTRA.has(keyword)
   const rewritten = extra ? rewrite(source) : null

@@ -97,7 +97,7 @@ Ten common types are drawn: flowchart, sequenceDiagram, classDiagram, stateDiagr
 
 Nothing is lost when a diagram cannot be drawn:
 
-- Too wide for the window: a left-to-right flowchart is redrawn top to bottom; if it still does not fit, the source is shown in a frame, with a line above it saying how many columns the diagram needs. Widen the window past that and it redraws.
+- Too wide for the window: a left-to-right flowchart is redrawn top to bottom; if it still does not fit, the source is shown in a frame, with a one-line note above it; widen the window and it redraws.
 - The plugin's own words (that line, "Open image", legends) follow the reply: Chinese replies get Chinese, everything else English.
 - A syntax error: the framed source and the error.
 - An edge label with no room left: it is listed under the diagram instead of disappearing.

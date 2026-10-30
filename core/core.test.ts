@@ -66,7 +66,7 @@ test('too wide left to right is drawn top-down, and too wide either way frames t
   expect(width(lr) > width(td)).toBe(true)
   const narrow = fit(WIDE_LR, 10)
   expect(narrow.kind).toBe('box')
-  expect(narrow.kind === 'box' ? narrow.note : '').toContain('the window has 10.')
+  expect(narrow.kind === 'box' ? narrow.note : '').toContain('Window too narrow')
   expect(narrow.art.plain[0]).toContain('mermaid: flowchart')
 })
 
@@ -243,9 +243,9 @@ test('notes and drawn words follow the reply language: Chinese prose gets Chines
   expect(replyLang('Here it is\n\n\`\`\`mermaid\ngraph TD\n  A[中文] --> B\n\`\`\`')).toBe('en')
   const wide = 'graph TD\n  A --> B & C & D & E & F & G & H'
   const zh = fit(wide, 10, { lang: 'zh' })
-  expect(zh.kind === 'box' ? zh.note : '').toContain('把窗口拉宽到')
+  expect(zh.kind === 'box' ? zh.note : '').toContain('窗口太窄')
   const en = fit(wide, 10)
-  expect(en.kind === 'box' ? en.note : '').toContain('Widen the window past')
+  expect(en.kind === 'box' ? en.note : '').toContain('Window too narrow')
   const gantt = 'gantt\n  dateFormat YYYY-MM-DD\n  A :a, 2024-01-01, 3d\n  B :crit, 2024-01-02, 2d'
   expect(fit(gantt, 100, { lang: 'zh' }).art.plain.join('\n')).toContain('已完成')
   expect(fit(gantt, 100).art.plain.join('\n')).toContain('done')

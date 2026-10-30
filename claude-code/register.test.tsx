@@ -68,10 +68,10 @@ test('too narrow frames the source and says why, in the reply language', async (
   const ui = await $.ui.mount({ plugin: 'agent-visual', surface: 'terminal', component: 'AssistantMessage', props: { text: REPLY, isFirstOfReply: true }, viewport: { columns: 14, rows: 40 } })
   expect(await ui.find({ type: 'Markdown', text: /```mermaid/ })).toBeUndefined()
   expect(await ui.find({ type: 'Text', text: /mermaid: flowchart/ })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: /窗口只有 10 列/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /窗口太窄/ })).toBeDefined()
   await ui.unmount()
   const en = await $.ui.mount({ plugin: 'agent-visual', surface: 'terminal', component: 'AssistantMessage', props: { text: REPLY.replace('先看流程：', 'The flow:').replace('就这样。', 'Done.'), isFirstOfReply: true }, viewport: { columns: 14, rows: 40 } })
-  expect(await en.find({ type: 'Text', text: /the window has 10\./ })).toBeDefined()
+  expect(await en.find({ type: 'Text', text: /Window too narrow/ })).toBeDefined()
   await en.unmount()
 })
 
