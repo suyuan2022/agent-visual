@@ -124,7 +124,7 @@ pi install git:github.com/suyuan2022/agent-visual
 ## 原理
 
 ```mermaid
-flowchart LR
+flowchart TD
     R[rules.md] -->|交给模型| M[agent 写回复]
     M --> T{回复写完了?}
     T -->|还在输出| S[原样显示]

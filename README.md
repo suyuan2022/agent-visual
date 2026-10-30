@@ -124,7 +124,7 @@ The rules already teach the agent this line, so it uses it when it wants to show
 ## How it works
 
 ```mermaid
-flowchart LR
+flowchart TD
     R[rules.md] -->|handed to the model| M[Agent writes a reply]
     M --> T{Reply finished?}
     T -->|still streaming| S[Show the text as is]
