@@ -1,0 +1,36 @@
+{
+  "name": "agent-visual",
+  "version": "0.3.0",
+  "description": "Draws each mermaid block of a reply in place as Unicode box art colored by the theme, shows a line that is only a local image as the picture, and gives the model the drawing rules in rules.md. The same core as the pi extension in pi/.",
+  "author": {
+    "name": "suyuan"
+  },
+  "license": "MIT",
+  "userConfig": {
+    "edgeColor": {
+      "type": "string",
+      "title": "Edge color",
+      "description": "Theme color for diagram lines and arrows: teal (planMode, closest to pi), gray (inactive), blue (suggestion), orange (claude).",
+      "default": "teal",
+      "options": [
+        "teal",
+        "gray",
+        "blue",
+        "orange"
+      ]
+    },
+    "experimentalTypes": {
+      "type": "boolean",
+      "title": "Experimental diagram types",
+      "description": "Also draw the less common types (journey, quadrant, xychart, C4, architecture, kanban, zenuml, venn, wardley, railroad and more) instead of showing their framed source.",
+      "default": false
+    },
+    "cellSize": {
+      "type": "string",
+      "title": "Terminal cell size",
+      "description": "A terminal cell's size in screen pixels, as WxH (e.g. 14x28), so a picture shows at its own size: one picture pixel on one screen pixel. auto: 14x28 on macOS (Ghostty on a Retina screen at its default font), 8x16 elsewhere.",
+      "default": "auto"
+    }
+  },
+  "hooks": "./claude-code/hooks.json"
+}

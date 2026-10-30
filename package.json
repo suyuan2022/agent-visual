@@ -1,0 +1,17 @@
+{
+  "name": "agent-visual",
+  "version": "0.3.0",
+  "private": true,
+  "type": "module",
+  "description": "Draw Mermaid diagrams and inline images in terminal replies, for Claude Code and pi.",
+  "license": "MIT",
+  "pi": {
+    "extensions": [
+      "./pi/index.ts"
+    ]
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*"
+  }
+}

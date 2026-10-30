@@ -1,0 +1,14 @@
+{
+  "name": "agent-visual",
+  "description": "Mermaid diagrams and inline images for terminal coding agents (Claude Code and pi).",
+  "owner": {
+    "name": "suyuan"
+  },
+  "plugins": [
+    {
+      "name": "agent-visual",
+      "source": "./",
+      "description": "Draw Mermaid diagrams and inline images in terminal replies, and remind the agent to use them."
+    }
+  ]
+}
