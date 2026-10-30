@@ -33,13 +33,15 @@ export function renderMermaid(markdown: string, context: MarkdownTransformContex
 	const diagrams = core.findDiagrams(markdown).filter((d) => d.closed);
 	if (diagrams.length === 0) return markdown;
 	const cols = Math.max(20, context.availableWidth - 2);
+	const lang = core.replyLang(markdown);
 	return core
 		.segments(markdown, diagrams)
 		.map((part) => {
 			if ("text" in part) return part.text;
-			const f = core.fit(part.diagram.source, cols);
+			const f = core.fit(part.diagram.source, cols, { lang });
 			const rows = (f.art.styled as Span[][]).map((row) => codeSpan(row.map(paint).join("")));
-			if (f.kind === "box" && f.note) rows.push(codeSpan(theme ? theme.fg("warning", f.note) : f.note));
+			// 没画出来的原因放在源码框上面，图再长也一眼看得到。
+			if (f.kind === "box" && f.note) rows.unshift(codeSpan(theme ? theme.fg("warning", f.note) : f.note));
 			return "\n" + rows.join("  \n") + "\n";
 		})
 		.join("");

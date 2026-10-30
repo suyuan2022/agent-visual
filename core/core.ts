@@ -6,6 +6,10 @@ import { normalize } from './normalize.ts'
 import { diagramKind, render, sourceBox } from './vendor/lovely-mermaid/index.js'
 import type { MermaidArt, Role } from './vendor/lovely-mermaid/index.js'
 import { stringWidth } from './vendor/lovely-mermaid/width.js'
+import { notDrawnNote, t, tooWideNote, withLang } from './i18n.ts'
+import type { Lang } from './i18n.ts'
+export { replyLang, t } from './i18n.ts'
+export type { Lang } from './i18n.ts'
 
 /** A fenced mermaid block at the reply's top level: its span in the text and its source. */
 export type Diagram = { start: number; end: number; source: string; closed: boolean }
@@ -107,13 +111,13 @@ function lostRows(lost: MermaidArt['lostLabels']): [string, Role][][] {
     byEdge.set(key, [...(byEdge.get(key) ?? []), label])
   }
   if (byEdge.size === 0) return []
-  return [[['Labels not drawn', 'edgeLabel']], ...[...byEdge].map(([edge, labels]): [string, Role][] => [[edge, 'text'], ['  ', 'none'], [labels.join(' / '), 'edgeLabel']])]
+  return [[[t('Labels not drawn'), 'edgeLabel']], ...[...byEdge].map(([edge, labels]): [string, Role][] => [[edge, 'text'], ['  ', 'none'], [labels.join(' / '), 'edgeLabel']])]
 }
 
 /** Diagram types drawn by default: lovely-mermaid's own, plus our gantt. The rest need `experimental`. */
 export const DEFAULT_EXTRA = new Set(['gantt'])
 
-export type FitOptions = { experimental?: boolean }
+export type FitOptions = { experimental?: boolean; lang?: Lang }
 
 /**
  * The drawing for `columns` cells: as written, then turned the other way.
@@ -127,15 +131,19 @@ export type FitOptions = { experimental?: boolean }
  * chart renderer of ours (extra/charts.ts) that lays itself out for `columns`.
  */
 export function fit(source: string, columns: number, options: FitOptions = {}): Fit {
+  return withLang(options.lang ?? 'en', () => fitIn(source, columns, options))
+}
+
+function fitIn(source: string, columns: number, options: FitOptions): Fit {
   const boxed = (note?: string): Fit => ({ kind: 'box', art: sourceBox(source, columns), note })
-  const tooWide = (w: number) => `Diagram is ${w} columns wide; the terminal has ${columns}. Widen the window to redraw.`
+  const tooWide = (w: number) => tooWideNote(w, columns)
   const keyword = (keywordOf(source) ?? '').toLowerCase()
   const extra = options.experimental === true || DEFAULT_EXTRA.has(keyword)
   const rewritten = extra ? rewrite(source) : null
   if (rewritten === null && diagramKind(source) === null) {
     const art = extra ? chart(source, columns) : null
     if (art === null) return boxed()
-    if (art.warnings.length > 0) return boxed(`Diagram not drawn: ${art.warnings[0]}`)
+    if (art.warnings.length > 0) return boxed(notDrawnNote(art.warnings[0] ?? '', 0))
     return art.width <= columns ? { kind: 'art', art } : boxed(tooWide(art.width))
   }
   const normalized = normalize(rewritten?.src ?? source)
@@ -148,8 +156,7 @@ export function fit(source: string, columns: number, options: FitOptions = {}): 
     if (drawn === null) return boxed()
     const art = withRows(drawn, [...after, ...lostRows(drawn.lostLabels)])
     if (art.warnings.length > 0) {
-      const more = art.warnings.length > 1 ? ` (+${art.warnings.length - 1} more)` : ''
-      return boxed(`Diagram not drawn: ${art.warnings[0]}${more}`)
+      return boxed(notDrawnNote(art.warnings[0] ?? '', art.warnings.length - 1))
     }
     if (art.width <= columns) return { kind: 'art', art }
     widest = widest === 0 ? art.width : Math.min(widest, art.width)
@@ -177,7 +184,7 @@ export function plainRewrite(text: string, diagrams: readonly Diagram[], fits: R
     .map(part => {
       if ('text' in part) return part.text
       const f = fits.get(part.diagram)
-      return f === undefined ? text.slice(part.diagram.start, part.diagram.end) : ['```text', ...f.art.plain, ...(f.kind === 'box' && f.note ? [f.note] : []), '```'].join('\n')
+      return f === undefined ? text.slice(part.diagram.start, part.diagram.end) : ['```text', ...(f.kind === 'box' && f.note ? [f.note] : []), ...f.art.plain, '```'].join('\n')
     })
     .join('')
 }

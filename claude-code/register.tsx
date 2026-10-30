@@ -2,7 +2,8 @@
 // theme color. A line that is only a local image is drawn as the picture, with a link to the original under it.
 import type { Color, FsBytes, Register, RenderNode } from 'claude-code'
 
-import { findDiagrams, fit, markdownSafe, needsWholeMarkdown, plainRewrite } from '../core/core.ts'
+import { findDiagrams, fit, markdownSafe, needsWholeMarkdown, plainRewrite, replyLang, t } from '../core/core.ts'
+import type { Lang } from '../core/core.ts'
 import type { Diagram, Fit } from '../core/core.ts'
 import { cellSize, fileUrl, findImages, imageBox, pngSize } from './images.ts'
 import type { ImageLine } from './images.ts'
@@ -18,11 +19,11 @@ const GUTTER = 4
 // Redraws are frequent (every resize, every streamed chunk): one layout per source and width.
 const fits = new Map<string, Fit>()
 
-function cachedFit(source: string, columns: number, experimental: boolean): Fit {
-  const key = `${columns}\n${experimental}\n${source}`
+function cachedFit(source: string, columns: number, experimental: boolean, lang: Lang): Fit {
+  const key = `${columns}\n${experimental}\n${lang}\n${source}`
   let f = fits.get(key)
   if (f === undefined) {
-    f = fit(source, columns, { experimental })
+    f = fit(source, columns, { experimental, lang })
     if (fits.size >= 200) fits.delete(fits.keys().next().value as string)
     fits.set(key, f)
   }
@@ -72,7 +73,8 @@ export const register: Register = (on, options) => {
     if (diagrams.length === 0 && images.length === 0) return next(e)
 
     const columns = (e.viewport?.columns ?? 80) - GUTTER
-    const drawn = new Map<Diagram, Fit>(diagrams.map(d => [d, cachedFit(d.source, columns, experimental)]))
+    const lang = replyLang(text)
+    const drawn = new Map<Diagram, Fit>(diagrams.map(d => [d, cachedFit(d.source, columns, experimental, lang)]))
 
     if (needsWholeMarkdown(text) || !markdownSafe(text)) {
       const rewritten = plainRewrite(text, diagrams, drawn)
@@ -147,10 +149,10 @@ export const register: Register = (on, options) => {
         const got = loaded.get(img)!
         const link = (
           <Text dimColor>
-            <Link href={fileUrl(img.path)}>{`Open image${img.alt ? `: ${img.alt}` : ''}`}</Link>
+            <Link href={fileUrl(img.path)}>{`${t('Open image', lang)}${img.alt ? (lang === 'zh' ? '：' : ': ') + img.alt : ''}`}</Link>
           </Text>
         )
-        if (got.kind === 'missing') children.push(<Text color="warning">{`Image not found: ${img.path}`}</Text>)
+        if (got.kind === 'missing') children.push(<Text color="warning">{`${t('Image not found', lang)}${lang === 'zh' ? '：' : ': '}${img.path}`}</Text>)
         else if (got.kind === 'unshown' || !graphics) children.push(link)
         else {
           const cell = cellSize(String(options.cellSize ?? ''), home?.startsWith('/Users/') === true)
@@ -164,10 +166,11 @@ export const register: Register = (on, options) => {
         }
         continue
       }
-      // A drawing and a framed source paint alike; a framed source may carry a note on why it was not drawn.
+      // A drawing and a framed source paint alike; a framed source carries its note above, where a tall frame cannot hide it.
       const f = drawn.get(item.diagram)!
       children.push(
         <Box flexDirection="column">
+          {f.kind === 'box' && f.note !== undefined ? <Text color="warning">{f.note}</Text> : null}
           {f.art.styled.map(row => (
             <Text wrap="truncate">
               {row.map(span => (
@@ -177,7 +180,6 @@ export const register: Register = (on, options) => {
               ))}
             </Text>
           ))}
-          {f.kind === 'box' && f.note !== undefined ? <Text dimColor>{f.note}</Text> : null}
         </Box>,
       )
     }

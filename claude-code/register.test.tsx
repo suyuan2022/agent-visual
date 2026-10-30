@@ -63,13 +63,16 @@ test('a reply with footnotes stays one Markdown, the block swapped for plain art
   await ui.unmount()
 })
 
-test('too narrow frames the source and says why', async ($, on) => {
+test('too narrow frames the source and says why, in the reply language', async ($, on) => {
   engine(on)
   const ui = await $.ui.mount({ plugin: 'agent-visual', surface: 'terminal', component: 'AssistantMessage', props: { text: REPLY, isFirstOfReply: true }, viewport: { columns: 14, rows: 40 } })
   expect(await ui.find({ type: 'Markdown', text: /```mermaid/ })).toBeUndefined()
   expect(await ui.find({ type: 'Text', text: /mermaid: flowchart/ })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: /the terminal has 10\./ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /窗口只有 10 列/ })).toBeDefined()
   await ui.unmount()
+  const en = await $.ui.mount({ plugin: 'agent-visual', surface: 'terminal', component: 'AssistantMessage', props: { text: REPLY.replace('先看流程：', 'The flow:').replace('就这样。', 'Done.'), isFirstOfReply: true }, viewport: { columns: 14, rows: 40 } })
+  expect(await en.find({ type: 'Text', text: /the window has 10\./ })).toBeDefined()
+  await en.unmount()
 })
 
 const JOURNEY = '```mermaid\njourney\n  title 一天\n  section 早\n    起床: 3: 我\n```'
@@ -115,7 +118,7 @@ test('a line that is only a local image is drawn as the picture, sized like pi, 
   const pics = await ui.findAll({ type: 'Image' })
   // On macOS, 320×160 px at 14×28 px a cell is 23×6 cells; `w=20` keeps the shape at 20×5.
   expect(pics.map(p => [p.props.columns, p.props.rows])).toEqual([[23, 6], [20, 5]])
-  expect(await ui.find({ type: 'Link', text: 'Open image: 首页' })).toMatchObject({ props: { href: `file://${PIC}` } })
+  expect(await ui.find({ type: 'Link', text: '打开原图：首页' })).toMatchObject({ props: { href: `file://${PIC}` } })
   expect(await ui.find({ type: 'Markdown', text: '截图如下：' })).toBeDefined()
   expect(await ui.find({ type: 'Markdown', text: /!\[/ })).toBeUndefined()
   await ui.unmount()
@@ -127,9 +130,9 @@ test('a missing image says so; a terminal without pictures gets the link alone',
   mock.env(on, { TERM_PROGRAM: 'Apple_Terminal', TERM: 'xterm-256color', HOME: '/Users/nobody' })
   const text = `![没有](/no/such/file.png)\n\n![有](${PIC})`
   const ui = await $.ui.mount({ plugin: 'agent-visual', surface: 'terminal', component: 'AssistantMessage', props: { text, isFirstOfReply: true }, viewport })
-  expect(await ui.find({ type: 'Text', text: 'Image not found: /no/such/file.png' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: '图片不存在：/no/such/file.png' })).toBeDefined()
   expect(await ui.find({ type: 'Image' })).toBeUndefined()
-  expect(await ui.find({ type: 'Link', text: 'Open image: 有' })).toBeDefined()
+  expect(await ui.find({ type: 'Link', text: '打开原图：有' })).toBeDefined()
   await ui.unmount()
 })
 

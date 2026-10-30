@@ -1,4 +1,5 @@
 // Diagram types whose structure a grammar lovely-mermaid draws can carry: rewritten into that grammar, with any detail it would lose listed under the drawing.
+import { t } from '../i18n.ts'
 import { bodyOf, commaSplit, label, stringWidth, unquote } from './common.ts'
 import type { Body, Line, Role } from './common.ts'
 
@@ -128,7 +129,7 @@ function c4(b: Body): Rewrite | null {
   if (after.length > 0) {
     const w = Math.max(...after.map(r => stringWidth(r[0][0])))
     for (const r of after) r[0][0] = r[0][0] + ' '.repeat(w - stringWidth(r[0][0]))
-    after.unshift([['Notes', 'edgeLabel']])
+    after.unshift([[t('Notes'), 'edgeLabel']])
   }
   return { src: withTitle(title, ['flowchart TD', ...out, ...edges].join('\n')), after }
 }
@@ -473,7 +474,7 @@ function agentflow(b: Body): Rewrite | null {
     out.push(text.replace(/\s*@\{.*\}\s*$/, ''))
   }
   if (out.length === 0) return null
-  if (after.length > 0) after.unshift([['Notes', 'edgeLabel']])
+  if (after.length > 0) after.unshift([[t('Notes'), 'edgeLabel']])
   return { src: withTitle(b.title, [`flowchart ${dir}`, ...out.map(l => `  ${l}`)].join('\n')), after }
 }
 
@@ -556,7 +557,7 @@ function usecase(b: Body): Rewrite | null {
     }
   }
   if (out.length === 0 && edges.length === 0) return null
-  if (after.length > 0) after.unshift([['Data', 'edgeLabel']])
+  if (after.length > 0) after.unshift([[t('Data'), 'edgeLabel']])
   return { src: withTitle(b.title, [`flowchart ${dir}`, ...out, ...edges].join('\n')), after }
 }
 

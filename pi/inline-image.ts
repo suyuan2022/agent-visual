@@ -8,6 +8,7 @@ import { homedir } from "node:os";
 import { extname } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { MarkdownTransformContext } from "@earendil-works/pi-coding-agent";
+import { t, replyLang } from "../core/i18n.ts";
 import { Image, getCapabilities, getCellDimensions, getImageDimensions, hyperlink } from "@earendil-works/pi-tui";
 
 export const MAX_HEIGHT_RATIO = 0.85;
@@ -32,13 +33,14 @@ export function parseOptions(title = ""): { width?: number; center: boolean } {
 	return { width: w ? Number(w[1]) : undefined, center: /(?:^|\s)center(?:\s|$)/.test(title) };
 }
 
-function renderOne(alt: string, rawPath: string, title: string | undefined, avail: number): string | null {
+function renderOne(alt: string, rawPath: string, title: string | undefined, avail: number, lang: "en" | "zh"): string | null {
 	const path = expand(rawPath);
 	if (!path.startsWith("/")) return null;
 	const mime = MIME[extname(path).toLowerCase()];
 	if (!mime) return null;
-	const link = `[Open image${alt ? ": " + alt : ""}](${pathToFileURL(path).href})`;
-	if (!existsSync(path)) return `> [!WARNING]\n> Image not found: \`${rawPath}\``;
+	const sep = lang === "zh" ? "：" : ": ";
+	const link = `[${t("Open image", lang)}${alt ? sep + alt : ""}](${pathToFileURL(path).href})`;
+	if (!existsSync(path)) return `> [!WARNING]\n> ${t("Image not found", lang)}${lang === "zh" ? "：" : ": "}\`${rawPath}\``;
 	if (!getCapabilities().images) return link;
 	const opt = parseOptions(title);
 	// 默认按图片本身的像素大小显示：小图不放大，大图最多铺满可用宽度、高度不超过屏幕的 85%。
@@ -89,6 +91,7 @@ function renderOne(alt: string, rawPath: string, title: string | undefined, avai
 
 export function renderInlineImages(markdown: string, context: MarkdownTransformContext): string {
 	if (context.messageType !== "assistant" || context.isStreaming || !markdown.includes("![")) return markdown;
+	const lang = replyLang(markdown);
 	const out: string[] = [];
 	let fence: string | null = null;
 	for (const line of markdown.split("\n")) {
@@ -100,7 +103,7 @@ export function renderInlineImages(markdown: string, context: MarkdownTransformC
 			continue;
 		}
 		const m = fence === null ? LINE_RE.exec(line) : null;
-		const rendered = m ? renderOne(m[1], m[2], m[3], context.availableWidth) : null;
+		const rendered = m ? renderOne(m[1], m[2], m[3], context.availableWidth, lang) : null;
 		out.push(rendered === null ? line : "\n" + rendered + "\n");
 	}
 	return out.join("\n");

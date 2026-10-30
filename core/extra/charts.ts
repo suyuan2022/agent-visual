@@ -1,4 +1,5 @@
 // Chart-like diagram types lovely-mermaid does not draw, drawn here in its vocabulary: bars `█` in the edge role over a `░` border track, labels in text, values in edgeLabel.
+import { t } from '../i18n.ts'
 import { D, L, R, U } from '../vendor/lovely-mermaid/canvas.js'
 import { fitLabel, wrapLabel } from '../vendor/lovely-mermaid/labels.js'
 import { bar, bodyOf, box, Canvas, commaSplit, drawText, label, num, pad, Rows, stringWidth, unquote } from './common.ts'
@@ -236,7 +237,7 @@ function gantt(b: Body, columns: number): MermaidArt | null {
   const used = new Set(placed.flatMap(t => [...t.tags]))
   if (used.has('done') || used.has('crit') || used.has('active')) {
     rows.blank()
-    rows.add([' '.repeat(lead), 'none'], ['█', 'edge'], [' planned / active  ', 'none'], ['█', 'border'], [' done  ', 'none'], ['█', 'title'], [' critical', 'none'])
+    rows.add([' '.repeat(lead), 'none'], ['█', 'edge'], [t(' planned / active  '), 'none'], ['█', 'border'], [t(' done  '), 'none'], ['█', 'title'], [t(' critical'), 'none'])
   }
   return rows.art(titleOf(b))
 }

@@ -1,4 +1,5 @@
 // The common types as mermaid.js reads them, respelled in what lovely-mermaid draws: the newer or rarer syntax it misses or misreads.
+import { t } from './i18n.ts'
 import { srcLines, stripMarkdown } from './vendor/lovely-mermaid/labels.js'
 import { frontmatterEnd } from './vendor/lovely-mermaid/statements.js'
 import type { Role } from './vendor/lovely-mermaid/index.js'
@@ -146,7 +147,7 @@ function er(lines: string[], after: [string, Role][][]): string[] {
   }
   const shown = groups.filter(g => g.members.length > 0)
   if (shown.length > 0) {
-    after.push([['Groups', 'edgeLabel']])
+    after.push([[t('Groups'), 'edgeLabel']])
     for (const g of shown) after.push([[g.path, 'text'], ['  ', 'none'], [g.members.join('、'), 'none']])
   }
   return out
