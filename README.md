@@ -24,7 +24,7 @@ agent-visual changes what the agent shows, not only how it is drawn:
 
 - **It draws.** Every Mermaid block in a reply becomes a box-drawing diagram in place, in your theme's colors. The saved message does not change.
 - **It shows images.** A line `![login page](/abs/path.png)` in a reply shows that local picture inside the reply. The plugin reads the file on your machine; the image never enters the model's context.
-- **It reminds the agent.** A short set of rules ([rules.md](rules.md)) is handed to the model now and then, so it draws a diagram when it explains a flow, a state machine or a schema, and shows a screenshot instead of describing it.
+- **It reminds the agent.** A short set of rules ([rules.md](rules.md), about 600 tokens) is handed to the model now and then. It asks for a fitting diagram in almost every reply, picked by what is being explained (a flow, a state machine, a schema, a schedule), and for a screenshot instead of a description.
 
 Claude Code and pi share the same drawing code and the same rules, so a diagram looks the same in both. The same question in Claude Code:
 
@@ -34,12 +34,15 @@ Claude Code and pi share the same drawing code and the same rules, so a diagram 
 
 ## Quick start
 
+Nothing else to install: the code runs inside Claude Code or pi. Tested on macOS; on Linux everything but image conversion works (see [Limitations](#limitations)); Windows is untested.
+
 ### Claude Code
 
-Claude Code 2.1.287 or newer.
+Claude Code 2.1.287 or newer (check with `claude --version`, upgrade with `claude update`).
 
 ```sh
 claude plugin marketplace add suyuan2022/agent-visual
+# plugin@marketplace: both are named agent-visual
 claude plugin install agent-visual@agent-visual
 ```
 
@@ -53,7 +56,7 @@ pi 1.4 or newer.
 pi install git:github.com/suyuan2022/agent-visual
 ```
 
-Turn off pi's built-in Mermaid renderer in `~/.pi/agent/settings.json`, so it does not draw the diagrams first in its own style:
+Turn off pi's built-in Mermaid renderer, so it does not draw the diagrams first in its own style. Merge this key into your existing `~/.pi/agent/settings.json`:
 
 ```json
 { "markdown": { "mermaid": "off" } }
@@ -68,6 +71,21 @@ In a new session, ask:
 > How does an order move from placed to refunded? What states can it be in?
 
 The reply should contain a drawn state diagram, not ```mermaid source.
+
+If you still see source:
+
+1. Check the plugin is on: `claude plugin list` shows `agent-visual@agent-visual` as enabled; in pi, `pi list` shows the package.
+2. Test the drawing alone, without the model's choice in the way: ask the agent to repeat this block back verbatim.
+
+   ````markdown
+   ```mermaid
+   flowchart LR
+       A[Ask] --> B[Draw]
+   ```
+   ````
+
+   A box-drawing diagram means drawing works and the model simply did not draw; source means the plugin is not running.
+3. In pi, make sure `markdown.mermaid` is `off`, then `/reload`.
 
 ## What you get
 
@@ -120,14 +138,14 @@ flowchart LR
 
 ## Terminal support
 
-Diagrams work in any terminal. Images need a terminal with an image protocol:
+Diagrams work in any terminal. Images need a terminal with an image protocol. Only Ghostty has been verified; the other rows follow each host's documented support:
 
 | Terminal | Claude Code images | pi images | pi click to open |
 |---|---|---|---|
 | Ghostty | yes | yes | yes |
 | kitty | yes (not tested) | yes (not tested) | yes (not tested) |
-| iTerm2, WezTerm | no, shows the description and a link | yes (not tested) | yes (not tested) |
-| Others, or inside tmux | no, shows the description and a link | no, shows a link | click the link |
+| iTerm2, WezTerm | no (Claude Code limitation): description and link | yes (not tested) | yes (not tested) |
+| Others, or inside tmux | no: description and link | no: a link | click the link |
 
 Claude Code only shows pictures in terminals it recognizes; a plugin cannot change that.
 
@@ -148,6 +166,16 @@ Run `/plugin configure agent-visual@agent-visual` in Claude Code:
 | `edgeColor` | `teal` | Theme color for lines and arrows: teal, gray, blue or orange |
 | `experimentalTypes` | off | Also try the less common diagram types |
 | `cellSize` | `auto` | Pixels per character cell, which sets image size. `auto` is 14x28 on macOS; write a value such as `16x32` |
+
+## Uninstall
+
+```sh
+claude plugin uninstall agent-visual@agent-visual
+claude plugin marketplace remove agent-visual
+pi remove git:github.com/suyuan2022/agent-visual
+```
+
+In pi, set `markdown.mermaid` back to its default by deleting the key.
 
 ## Limitations
 

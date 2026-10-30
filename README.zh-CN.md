@@ -24,7 +24,7 @@ agent-visual 改变的是 agent 给你看什么，不只是怎么画：
 
 - 画图：回复里的 Mermaid 块原地画成终端框线图，颜色跟着主题走。存下来的消息不变。
 - 贴图：回复里单独一行 `![登录页](/绝对路径.png)`，这张本机图片就显示在正文里。图片由插件在本机读，不进模型上下文。
-- 提醒：把一份简短的规矩（[rules.md](rules.md)）时不时交给模型。它讲流程、状态机、数据表关系时会自己画图，要给你看截图时直接贴图，而不是用文字描述。
+- 提醒：把一份简短的规矩（[rules.md](rules.md)，约 600 token）时不时交给模型。它要求几乎每条回复都配一张合适的图，按讲的内容挑图种（流程、状态机、数据表关系、排期），要给你看截图时直接贴图，而不是用文字描述。
 
 Claude Code 和 pi 用同一套画图代码和同一份规矩，同一张图两边长得一样。在 Claude Code 里问同一个问题：
 
@@ -34,12 +34,15 @@ Claude Code 和 pi 用同一套画图代码和同一份规矩，同一张图两�
 
 ## 快速开始
 
+不用另装任何东西，代码跑在 Claude Code 或 pi 里面。在 macOS 上测过；Linux 上除了图片格式转换都能用（见[已知限制](#已知限制)）；Windows 没测过。
+
 ### Claude Code
 
-需要 Claude Code 2.1.287 或更新。
+需要 Claude Code 2.1.287 或更新（`claude --version` 查版本，`claude update` 升级）。
 
 ```sh
 claude plugin marketplace add suyuan2022/agent-visual
+# 写法是 插件名@marketplace名，两个都叫 agent-visual
 claude plugin install agent-visual@agent-visual
 ```
 
@@ -53,7 +56,7 @@ claude plugin install agent-visual@agent-visual
 pi install git:github.com/suyuan2022/agent-visual
 ```
 
-再在 `~/.pi/agent/settings.json` 里关掉 pi 自带的 Mermaid 渲染，否则它会先用自己的样式把图画掉：
+再关掉 pi 自带的 Mermaid 渲染，否则它会先用自己的样式把图画掉。把下面这个键合并进你现有的 `~/.pi/agent/settings.json`：
 
 ```json
 { "markdown": { "mermaid": "off" } }
@@ -68,6 +71,21 @@ pi install git:github.com/suyuan2022/agent-visual
 > 订单从下单到退款有哪些状态，怎么流转？
 
 回复里应该出现一张画好的状态图，而不是 ```mermaid 源码。
+
+还是看到源码时：
+
+1. 确认插件开着：`claude plugin list` 里 `agent-visual@agent-visual` 是 enabled；pi 里 `pi list` 能看到这个包。
+2. 撇开模型、单测画图：让 agent 原样复述下面这段。
+
+   ````markdown
+   ```mermaid
+   flowchart LR
+       A[提问] --> B[画图]
+   ```
+   ````
+
+   出现框线图，说明画图没问题，只是模型那次没画；还是源码，说明插件没在运行。
+3. pi 里确认 `markdown.mermaid` 是 `off`，再执行 `/reload`。
 
 ## 能做什么
 
@@ -120,14 +138,14 @@ flowchart LR
 
 ## 终端支持
 
-画图在任何终端都能用。贴图要终端支持图片协议：
+画图在任何终端都能用。贴图要终端支持图片协议。只在 Ghostty 里实测过，其他行按各工具文档写明的支持情况填：
 
 | 终端 | Claude Code 贴图 | pi 贴图 | pi 点图打开 |
 |---|---|---|---|
 | Ghostty | 能 | 能 | 能 |
 | kitty | 能（未实测） | 能（未实测） | 能（未实测） |
-| iTerm2、WezTerm | 不能，显示说明和链接 | 能（未实测） | 能（未实测） |
-| 其他终端、tmux 里 | 不能，显示说明和链接 | 不能，显示链接 | 点链接打开 |
+| iTerm2、WezTerm | 不能（Claude Code 的限制）：显示说明和链接 | 能（未实测） | 能（未实测） |
+| 其他终端、tmux 里 | 不能：显示说明和链接 | 不能：显示链接 | 点链接打开 |
 
 Claude Code 只在它认可的终端里显示图片，插件改不了。
 
@@ -148,6 +166,16 @@ Claude Code 只在它认可的终端里显示图片，插件改不了。
 | `edgeColor` | `teal` | 连线和箭头用哪个主题色：teal、gray、blue、orange |
 | `experimentalTypes` | 关 | 试画不常用的图种 |
 | `cellSize` | `auto` | 一个字符格多少像素，决定图片显示多大；`auto` 在 macOS 上按 14x28，也可以写 `16x32` 这样的值 |
+
+## 卸载
+
+```sh
+claude plugin uninstall agent-visual@agent-visual
+claude plugin marketplace remove agent-visual
+pi remove git:github.com/suyuan2022/agent-visual
+```
+
+pi 里把 `markdown.mermaid` 这个键删掉，就恢复默认。
 
 ## 已知限制
 
