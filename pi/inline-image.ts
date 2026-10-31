@@ -1,5 +1,5 @@
 // 回复正文里的图片：把单独成行的 ![说明](路径 "w=100 center") 换成终端内联图，
-// 图下附一行可点击的「打开原图」链接。图片在本机读取，不进模型上下文。
+// 点图打开原图。图片在本机读取，不进模型上下文。
 //
 // 只处理独占一行、路径是绝对路径或 ~ 开头的本地图片；代码块里的不动；流式输出时不渲染。
 // 写法：title 里可写 w=列数（默认按图片原始大小，不超过可用宽度和屏幕高度的 85%）、center（居中）。
@@ -9,7 +9,8 @@ import { basename, extname } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { MarkdownTransformContext } from "@earendil-works/pi-coding-agent";
 import { t, replyLang } from "../core/i18n.ts";
-import { Image, getCapabilities, getCellDimensions, getImageDimensions, hyperlink } from "@earendil-works/pi-tui";
+import { Image, allocateImageId, getCapabilities, getCellDimensions, getImageDimensions, hyperlink, renderImage } from "@earendil-works/pi-tui";
+import { pngBands } from "./png-bands.ts";
 
 export const MAX_HEIGHT_RATIO = 0.85;
 const MIME: Record<string, string> = { ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp" };
@@ -75,6 +76,8 @@ function renderOne(alt: string, rawPath: string, title: string | undefined, avai
 	const hot = hyperlink("\u00a0".repeat(cols), url);
 	const rows = lines.length;
 	if (imgIdx === 0 && getCapabilities().images === "kitty") {
+		const bands = bandStrips(key, data, mime, rows, cols);
+		if (bands) return bands.map((l) => codeSpan(pad + l + hot)).join("\n\n");
 		const strips = kittyStrips(lines[0], data, mime, rows);
 		// 后面各条把链接格子写在前面、退回光标再放图：pi 往上翻时会把「紧挨屏幕顶上的那行图」
 		// 按整张图重新裁一遍，它认的是图片转义码后面的第一个分号；条里没有分号，pi 就不会误裁它们。
@@ -95,8 +98,44 @@ function renderOne(alt: string, rawPath: string, title: string | undefined, avai
 }
 
 // 分条显示：Markdown 里每段图片行之间必有一个空行，所以一条占两行（自己那行加下面的空行）。
-// 第一条带图片数据，后面每条用 a=p 放同一张图的下一段（按源图像素裁），整张图只传一次。
-// 往上翻到图片中间时，屏幕里剩下的那几条各自还在，图能露出一部分。
+//
+// PNG：切成每条一张的小图，每条自带自己那段的数据，哪条先进屏幕就先显示哪条；
+// pi 按每张小图登记的尺寸裁剪、缓存和回收。
+const bandCache = new Map<string, string[] | null>();
+function bandStrips(key: string, data: string, mime: string, rows: number, cols: number): string[] | null {
+	if (mime !== "image/png" || rows < 3) return null;
+	if (bandCache.has(key)) return bandCache.get(key)!;
+	const lines = cutBands(data, mime, rows, cols);
+	bandCache.set(key, lines);
+	if (bandCache.size > 30) bandCache.delete(bandCache.keys().next().value!);
+	return lines;
+}
+
+function cutBands(data: string, mime: string, rows: number, cols: number): string[] | null {
+	const dim = getImageDimensions(data, mime);
+	if (!dim) return null;
+	const cuts: number[] = [];
+	for (let k = 0; 2 * k < rows; k++) cuts.push(Math.floor((dim.heightPx * 2 * k) / rows));
+	const pngs = pngBands(Buffer.from(data, "base64"), cuts);
+	if (!pngs) return null;
+	const lines: string[] = [];
+	for (let k = 0; k < pngs.length; k++) {
+		const r = Math.min(2, rows - 2 * k);
+		// renderImage 登记这张小图的真实像素尺寸和行数，pi 靠它裁剪和缓存；列数统一改成整张图的列数。
+		const out = renderImage(pngs[k].toString("base64"), { widthPx: dim.widthPx, heightPx: pngs[k].readUInt32BE(20) }, {
+			maxWidthCells: cols,
+			maxHeightCells: r,
+			imageId: allocateImageId(),
+			moveCursor: false,
+		});
+		if (!out || out.rows !== r) return null;
+		lines.push(out.sequence.replace(/^(\x1b_G[^;]*?),c=\d+/, `$1,c=${cols}`));
+	}
+	return lines;
+}
+
+// 其他格式（JPG、GIF、WebP）：第一条带整张图的数据，后面每条用 a=p 放同一张图的下一段
+// （按源图像素裁），整张图只传一次。缺点是第一条没进过屏幕时数据还没发，下面各条画不出来。
 function kittyStrips(first: string, data: string, mime: string, rows: number): string[] | null {
 	const m = /^\x1b_G([^;]*);/.exec(first);
 	const id = m && /(?:^|,)i=(\d+)/.exec(m[1])?.[1];
