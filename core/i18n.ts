@@ -10,7 +10,6 @@ const ZH: Record<string, string> = {
   ' planned / active  ': ' 计划/进行中  ',
   ' done  ': ' 已完成  ',
   ' critical': ' 关键',
-  'Open image': '打开原图',
   'Image not found': '找不到图片',
 }
 

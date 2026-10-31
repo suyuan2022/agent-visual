@@ -5,7 +5,7 @@ import type { Color, FsBytes, Register, RenderNode } from 'claude-code'
 import { findDiagrams, fit, markdownSafe, needsWholeMarkdown, plainRewrite, replyLang, t } from '../core/core.ts'
 import type { Lang } from '../core/core.ts'
 import type { Diagram, Fit } from '../core/core.ts'
-import { cellSize, fileUrl, findImages, imageBox, pngSize } from './images.ts'
+import { bmpToHalfBlocks, cellSize, findImages, imageBox, pngSize } from './images.ts'
 import type { ImageLine } from './images.ts'
 import { registerRules } from './rules.ts'
 import type { Role } from '../core/vendor/lovely-mermaid/index.js'
@@ -42,6 +42,9 @@ const CONVERTIBLE = /\.(png|jpe?g|gif|webp|heic|tiff?|bmp)$/i
 
 // One read per file version: a redraw draws from here.
 const pictures = new Map<string, Loaded>()
+// Half-block cells per file version and box.
+const rastered = new Map<string, string>()
+
 
 function hash(s: string): string {
   let h = 5381
@@ -81,10 +84,11 @@ export const register: Register = (on, options) => {
       return rewritten === text ? next(e) : next({ ...e, props: { ...e.props, text: rewritten } })
     }
 
-    // The engine draws an `Image` where the terminal speaks the kitty graphics protocol; elsewhere only the link.
-    // Rex speaks it too (pi draws pictures there).
+    // The engine draws an `Image` only where the terminal speaks kitty graphics with Unicode placeholders (kitty,
+    // Ghostty). Everywhere else (Rex, iTerm2, Terminal) the picture is drawn in half blocks: two pixels a cell.
     const term = images.length === 0 ? '' : `${(await $.env.get('TERM_PROGRAM')) ?? ''} ${(await $.env.get('TERM')) ?? ''}`.toLowerCase()
-    const graphics = /ghostty|kitty|rex/.test(term) || (images.length > 0 && (await $.env.get('KITTY_WINDOW_ID')) !== undefined)
+    const graphics = /ghostty|kitty/.test(term) || (images.length > 0 && (await $.env.get('KITTY_WINDOW_ID')) !== undefined)
+    const tmp = images.length === 0 ? '/tmp/' : ((await $.env.get('TMPDIR')) ?? '/tmp/')
 
     async function load(path: string): Promise<Loaded> {
       let stat
@@ -94,8 +98,6 @@ export const register: Register = (on, options) => {
         return { kind: 'missing' }
       }
       if (stat.kind !== 'file') return { kind: 'missing' }
-      // Where no picture can be drawn, knowing the file is there is enough for its link.
-      if (!graphics) return { kind: 'unshown' }
       const key = `${path}\n${stat.mtimeMs}\n${stat.size}`
       const hit = pictures.get(key)
       if (hit !== undefined) return hit
@@ -131,8 +133,42 @@ export const register: Register = (on, options) => {
       return loaded
     }
     const loaded = new Map<ImageLine, Loaded>(await Promise.all(images.map(async img => [img, await load(img.path)] as const)))
+    const cell = cellSize(String(options.cellSize ?? ''), home?.startsWith('/Users/') === true)
+    const boxes = new Map<ImageLine, { columns: number; rows: number }>()
+    for (const [img, got] of loaded) if (got.kind === 'picture') boxes.set(img, imageBox(got.picture, { columns, rows: e.viewport?.rows ?? 40 }, cell, img.width))
+    const rasters = new Map<ImageLine, string>()
+    if (!graphics) {
+      await Promise.all(
+        [...boxes].map(async ([img, box]) => {
+          const cells = await halfBlocks(img.path, box, tmp)
+          if (cells !== undefined) rasters.set(img, cells)
+        }),
+      )
+    }
 
-    const { Box, Image, Link, Markdown, Text } = $.ui.resolve(e)
+    // The picture as half blocks: macOS `sips` scales it to one pixel per column and two per row, as a BMP read here.
+    async function halfBlocks(path: string, box: { columns: number; rows: number }, dir: string): Promise<string | undefined> {
+      try {
+        const stat = await $.fs.stat(path)
+        const key = `${path}\n${stat.mtimeMs}\n${box.columns}x${box.rows}`
+        const hit = rastered.get(key)
+        if (hit !== undefined) return hit
+        const out = `${dir}agent-visual-${hash(key)}.bmp`.replace(/\/\/+/g, '/')
+        const made = await $.process.run(['sips', '-s', 'format', 'bmp', '-z', String(box.rows * 2), String(box.columns), path, '--out', out])
+        if (made.exitCode !== 0) return undefined
+        const { base64 } = (await $.fs.read(out, { as: 'bytes' })) as FsBytes
+        const cells = bmpToHalfBlocks((Uint8Array as unknown as { fromBase64(s: string): Uint8Array }).fromBase64(base64), box.columns, box.rows)
+        if (cells === undefined) return undefined
+        if (rastered.size >= 12) rastered.delete(rastered.keys().next().value as string)
+        rastered.set(key, cells)
+        return cells
+      } catch {
+        return undefined
+      }
+    }
+
+    const { Box, Button, Image, Markdown, Raster, Text } = $.ui.resolve(e)
+    const opener = home?.startsWith('/Users/') === true ? 'open' : 'xdg-open'
     const children: RenderNode[] = []
     const prose = (part: string) => {
       const trimmed = part.replace(/^\n+|\s+$/g, '')
@@ -147,19 +183,23 @@ export const register: Register = (on, options) => {
       if ('image' in item) {
         const img = item.image
         const got = loaded.get(img)!
+        // A picture takes no press, so its name under it does: one click opens the file in the system viewer.
+        // A Button, not a Link: the engine draws a Link's URL beside it where it doubts the terminal's links (Rex).
+        const name = img.alt || (img.path.split('/').pop() ?? img.path)
         const link = (
-          <Text dimColor>
-            <Link href={fileUrl(img.path)}>{`${t('Open image', lang)}${img.alt ? (lang === 'zh' ? '：' : ': ') + img.alt : ''}`}</Link>
-          </Text>
+          <Button key={`open:${item.start}`} plain dimColor label={name} onPress={() => void $.process.run([opener, img.path])} />
         )
         if (got.kind === 'missing') children.push(<Text color="warning">{`${t('Image not found', lang)}${lang === 'zh' ? '：' : ': '}${img.path}`}</Text>)
-        else if (got.kind === 'unshown' || !graphics) children.push(link)
+        else if (got.kind === 'unshown' || (!graphics && !rasters.has(img))) children.push(link)
         else {
-          const cell = cellSize(String(options.cellSize ?? ''), home?.startsWith('/Users/') === true)
-          const box = imageBox(got.picture, { columns, rows: e.viewport?.rows ?? 40 }, cell, img.width)
+          const box = boxes.get(img)!
           children.push(
             <Box flexDirection="column" paddingLeft={img.center ? Math.max(0, Math.floor((columns - box.columns) / 2)) : 0}>
-              <Image source={{ png: got.picture.png }} columns={box.columns} rows={box.rows} alt={img.alt || ' '} />
+              {graphics ? (
+                <Image source={{ png: got.picture.png }} columns={box.columns} rows={box.rows} alt={img.alt || ' '} />
+              ) : (
+                <Raster key={`img-${item.start}`} columns={box.columns} rows={box.rows} cells={rasters.get(img)!} />
+              )}
               {link}
             </Box>,
           )

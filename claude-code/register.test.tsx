@@ -1,5 +1,7 @@
 import { expect, mock, test } from 'claude-code/testing'
 
+import { bmpToHalfBlocks } from './images.ts'
+
 const FLOW = 'flowchart TD\n  A[开始] --> B{要不要画}\n  B -->|要| C[画成框图]'
 const REPLY = `先看流程：\n\n\`\`\`mermaid\n${FLOW}\n\`\`\`\n\n就这样。`
 const viewport = { columns: 100, rows: 40 }
@@ -109,22 +111,29 @@ function files(on: Parameters<Parameters<typeof test>[1]>[1]) {
   })
 }
 
-test('a line that is only a local image is drawn as the picture, sized like pi, with a link to it', async ($, on) => {
+test('a line that is only a local image is drawn as the picture, sized like pi, its name under it opening the file', async ($, on) => {
   engine(on)
   files(on)
+  const opened: string[][] = []
+  on('process.run', async (_$, e) => {
+    opened.push([...e.argv])
+    return { value: { exitCode: 0, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
+  })
   mock.env(on, ghostty)
   const text = `截图如下：\n\n![首页](${PIC})\n\n![小图](${PIC} "w=20 center")\n\n完。`
   const ui = await $.ui.mount({ plugin: 'agent-visual', surface: 'terminal', component: 'AssistantMessage', props: { text, isFirstOfReply: true }, viewport })
   const pics = await ui.findAll({ type: 'Image' })
   // On macOS, 320×160 px at 14×28 px a cell is 23×6 cells; `w=20` keeps the shape at 20×5.
   expect(pics.map(p => [p.props.columns, p.props.rows])).toEqual([[23, 6], [20, 5]])
-  expect(await ui.find({ type: 'Link', text: '打开原图：首页' })).toMatchObject({ props: { href: `file://${PIC}` } })
+  expect(await ui.find({ type: 'Link' })).toBeUndefined()
+  await ui.press({ key: `open:${text.indexOf('![首页]')}` })
+  expect(opened).toEqual([['open', PIC]])
   expect(await ui.find({ type: 'Markdown', text: '截图如下：' })).toBeDefined()
   expect(await ui.find({ type: 'Markdown', text: /!\[/ })).toBeUndefined()
   await ui.unmount()
 })
 
-test('a missing image says so; a terminal without pictures gets the link alone', async ($, on) => {
+test('a missing image says so; where no picture can be drawn, the name alone', async ($, on) => {
   engine(on)
   files(on)
   mock.env(on, { TERM_PROGRAM: 'Apple_Terminal', TERM: 'xterm-256color', HOME: '/Users/nobody' })
@@ -132,7 +141,7 @@ test('a missing image says so; a terminal without pictures gets the link alone',
   const ui = await $.ui.mount({ plugin: 'agent-visual', surface: 'terminal', component: 'AssistantMessage', props: { text, isFirstOfReply: true }, viewport })
   expect(await ui.find({ type: 'Text', text: '找不到图片：/no/such/file.png' })).toBeDefined()
   expect(await ui.find({ type: 'Image' })).toBeUndefined()
-  expect(await ui.find({ type: 'Link', text: '打开原图：有' })).toBeDefined()
+  expect(await ui.find({ type: 'Button', text: '有' })).toBeDefined()
   await ui.unmount()
 })
 
@@ -167,4 +176,23 @@ test('the cellSize option sets the pixels a cell holds', { options: { cellSize: 
   const ui = await $.ui.mount({ plugin: 'agent-visual', surface: 'terminal', component: 'AssistantMessage', props: { text: `![图](${PIC})`, isFirstOfReply: true }, viewport })
   expect((await ui.findAll({ type: 'Image' })).map(p => [p.props.columns, p.props.rows])).toEqual([[40, 10]])
   await ui.unmount()
+})
+
+test('without kitty graphics a picture is drawn in half blocks from a BMP sips made', async () => {
+  // 2×4 pixels, 24-bit, bottom-up: rows (top to bottom) red, green, blue, white.
+  const head = new Uint8Array(54)
+  const dv = new DataView(head.buffer)
+  head[0] = 0x42
+  head[1] = 0x4d
+  dv.setUint32(10, 54, true)
+  dv.setInt32(18, 2, true)
+  dv.setInt32(22, 4, true)
+  dv.setUint16(28, 24, true)
+  const row = (b: number, g: number, r: number) => [b, g, r, b, g, r, 0, 0]
+  const body = [...row(255, 255, 255), ...row(255, 0, 0), ...row(0, 255, 0), ...row(0, 0, 255)]
+  const bmp = new Uint8Array([...head, ...body])
+  const cells = new Uint32Array((Uint8Array as unknown as { fromBase64(s: string): Uint8Array }).fromBase64(bmpToHalfBlocks(bmp, 2, 2)!).buffer)
+  expect([...cells.slice(0, 3)]).toEqual([0x2580, 0xff0000, 0x00ff00])
+  expect([...cells.slice(6, 9)]).toEqual([0x2580, 0x0000ff, 0xffffff])
+  expect(bmpToHalfBlocks(bmp, 3, 2)).toBeUndefined()
 })

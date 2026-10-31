@@ -5,7 +5,7 @@
 // 写法：title 里可写 w=列数（默认按图片原始大小，不超过可用宽度和屏幕高度的 85%）、center（居中）。
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
-import { extname } from "node:path";
+import { basename, extname } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { MarkdownTransformContext } from "@earendil-works/pi-coding-agent";
 import { t, replyLang } from "../core/i18n.ts";
@@ -38,8 +38,7 @@ function renderOne(alt: string, rawPath: string, title: string | undefined, avai
 	if (!path.startsWith("/")) return null;
 	const mime = MIME[extname(path).toLowerCase()];
 	if (!mime) return null;
-	const sep = lang === "zh" ? "：" : ": ";
-	const link = `[${t("Open image", lang)}${alt ? sep + alt : ""}](${pathToFileURL(path).href})`;
+	const link = `[${alt || basename(path)}](${pathToFileURL(path).href})`;
 	if (!existsSync(path)) return `> [!WARNING]\n> ${t("Image not found", lang)}${lang === "zh" ? "：" : ": "}\`${rawPath}\``;
 	if (!getCapabilities().images) return link;
 	const opt = parseOptions(title);
@@ -75,6 +74,12 @@ function renderOne(alt: string, rawPath: string, title: string | undefined, avai
 	// pi 全屏模式按点击位置取该格的链接并用系统默认程序打开。
 	const hot = hyperlink("\u00a0".repeat(cols), url);
 	const rows = lines.length;
+	if (imgIdx === 0 && getCapabilities().images === "kitty") {
+		const strips = kittyStrips(lines[0], data, mime, rows);
+		// 后面各条把链接格子写在前面、退回光标再放图：pi 往上翻时会把「紧挨屏幕顶上的那行图」
+		// 按整张图重新裁一遍，它认的是图片转义码后面的第一个分号；条里没有分号，pi 就不会误裁它们。
+		if (strips) return strips.map((l, k) => codeSpan(k === 0 ? pad + l + hot : pad + hot + `\x1b[${cols}D` + l)).join("\n\n");
+	}
 	// Markdown 会把图片转义码和同段的占位行并成一行，图只剩一行高；所以图片行单独成段，
 	// 占位行另成一段，两段之间的空行也占一行（不带链接，点不中的只有这一行）。
 	const filler = Array.from({ length: Math.max(0, rows - 2) }, () => codeSpan(pad + hot)).join("  \n");
@@ -87,6 +92,31 @@ function renderOne(alt: string, rawPath: string, title: string | undefined, avai
 		body = [filler, codeSpan(pad + lines[imgIdx])].filter(Boolean).join("\n\n");
 	}
 	return body;
+}
+
+// 分条显示：Markdown 里每段图片行之间必有一个空行，所以一条占两行（自己那行加下面的空行）。
+// 第一条带图片数据，后面每条用 a=p 放同一张图的下一段（按源图像素裁），整张图只传一次。
+// 往上翻到图片中间时，屏幕里剩下的那几条各自还在，图能露出一部分。
+function kittyStrips(first: string, data: string, mime: string, rows: number): string[] | null {
+	const m = /^\x1b_G([^;]*);/.exec(first);
+	const id = m && /(?:^|,)i=(\d+)/.exec(m[1])?.[1];
+	const cols = m && /(?:^|,)c=(\d+)/.exec(m[1])?.[1];
+	const dim = getImageDimensions(data, mime);
+	if (!m || !id || !cols || !dim || rows < 3) return null;
+	const H = dim.heightPx;
+	const band = (k: number) => {
+		const r = Math.min(2, rows - 2 * k);
+		const y = Math.floor((H * 2 * k) / rows);
+		return { y, h: Math.max(1, Math.floor((H * (2 * k + r)) / rows) - y), r };
+	};
+	const b0 = band(0);
+	const head = "\x1b_G" + m[1].split(",").filter((c) => !/^[yhr]=/.test(c)).concat("y=0", `h=${b0.h}`, `r=${b0.r}`).join(",") + ";";
+	const out = [head + first.slice(m[0].length)];
+	for (let k = 1; 2 * k < rows; k++) {
+		const b = band(k);
+		out.push(`\x1b_Ga=p,i=${id},p=${k + 1},y=${b.y},h=${b.h},c=${cols},r=${b.r},C=1,q=2\x1b\\`);
+	}
+	return out;
 }
 
 export function renderInlineImages(markdown: string, context: MarkdownTransformContext): string {

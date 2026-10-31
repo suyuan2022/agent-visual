@@ -85,7 +85,37 @@ export function imageBox(px: { width: number; height: number }, room: { columns:
   return { columns, rows }
 }
 
-/** A `file://` URL for an absolute path. */
-export function fileUrl(path: string): string {
-  return `file://${encodeURI(path).replace(/[?#]/g, c => encodeURIComponent(c))}`
+
+/**
+ * A 24- or 32-bit BMP of `columns` x `rows * 2` pixels as Raster cells: each cell an upper half block, its
+ * foreground the upper pixel, its background the lower. A see-through pixel takes the terminal's own color.
+ */
+export function bmpToHalfBlocks(b: Uint8Array, columns: number, rows: number): string | undefined {
+  if (b.length < 54 || b[0] !== 0x42 || b[1] !== 0x4d) return undefined
+  const dv = new DataView(b.buffer, b.byteOffset, b.byteLength)
+  const offset = dv.getUint32(10, true)
+  const width = dv.getInt32(18, true)
+  const rawHeight = dv.getInt32(22, true)
+  const bpp = dv.getUint16(28, true)
+  const height = Math.abs(rawHeight)
+  if ((bpp !== 24 && bpp !== 32) || width !== columns || height !== rows * 2) return undefined
+  const stride = Math.ceil((width * bpp) / 32) * 4
+  const step = bpp / 8
+  const color = (x: number, y: number): number => {
+    const row = rawHeight > 0 ? height - 1 - y : y
+    const i = offset + row * stride + x * step
+    if (i + step > b.length) return 0x01000000
+    if (step === 4 && b[i + 3]! < 128) return 0x01000000
+    return (b[i + 2]! << 16) | (b[i + 1]! << 8) | b[i]!
+  }
+  const words = new Uint32Array(columns * rows * 3)
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < columns; c++) {
+      const k = (r * columns + c) * 3
+      words[k] = 0x2580
+      words[k + 1] = color(c, r * 2)
+      words[k + 2] = color(c, r * 2 + 1)
+    }
+  }
+  return (new Uint8Array(words.buffer) as Uint8Array & { toBase64(): string }).toBase64()
 }

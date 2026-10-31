@@ -98,7 +98,7 @@ Ten common types are drawn: flowchart, sequenceDiagram, classDiagram, stateDiagr
 Nothing is lost when a diagram cannot be drawn:
 
 - Too wide for the window: a left-to-right flowchart is redrawn top to bottom; if it still does not fit, the source is shown in a frame, with a one-line note above it ("Diagram can't be displayed at this width"); widen the window and it redraws.
-- The plugin's own words (that line, "Open image", legends) follow the reply: Chinese replies get Chinese, everything else English.
+- The plugin's own words (that line, legends) follow the reply: Chinese replies get Chinese, everything else English.
 - A syntax error: the framed source and the error.
 - An edge label with no room left: it is listed under the diagram instead of disappearing.
 - While the reply is still streaming, the source shows; it becomes a diagram once the reply is done.
@@ -116,7 +116,7 @@ Put an image on a line of its own:
 - Shown at its own size, scaled down to fit the window.
 - Set the width or center it with a title: `![login page](/path.png "w=60 center")`, where `w` is a width in columns.
 - The path must be absolute or start with `~/`. png, jpg, gif and webp work.
-- In pi, click the picture to open it full size. In Claude Code, an "open image" link sits under it.
+- In pi, click the picture to open it full size. In Claude Code, click its name under it.
 
 The rules already teach the agent this line, so it uses it when it wants to show you a screenshot or a mockup.
 
@@ -145,10 +145,11 @@ Diagrams work in any terminal. Images need a terminal with an image protocol. On
 |---|---|---|---|
 | Ghostty | yes | yes | yes |
 | kitty | yes (not tested) | yes (not tested) | yes (not tested) |
-| iTerm2, WezTerm | no (Claude Code limitation): description and link | yes (not tested) | yes (not tested) |
-| Others, or inside tmux | no: description and link | no: a link | click the link |
+| Rex | a coarse preview in half blocks | yes | yes |
+| iTerm2, WezTerm | a coarse preview in half blocks (not tested) | yes (not tested) | yes (not tested) |
+| Others, or inside tmux | a coarse preview in half blocks (macOS only) | no: the name as a link | click the link |
 
-Claude Code only shows pictures in terminals it recognizes; a plugin cannot change that.
+Claude Code draws real pictures only in kitty and Ghostty. Everywhere else the plugin draws the picture with half-block characters, two pixels a cell: enough to see the layout, not to read small text. Click the name under it to open the file.
 
 ## Make it yours
 
