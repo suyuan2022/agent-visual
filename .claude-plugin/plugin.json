@@ -1,6 +1,6 @@
 {
   "name": "agent-visual",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Draws each mermaid block of a reply in place as Unicode box art colored by the theme, shows a line that is only a local image as the picture, and gives the model the drawing rules in rules.md. The same core as the pi extension in pi/.",
   "author": {
     "name": "suyuan"

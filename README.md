@@ -24,7 +24,7 @@ agent-visual changes what the agent shows, not only how it is drawn:
 
 - **It draws.** Every Mermaid block in a reply becomes a box-drawing diagram in place, in your theme's colors. The saved message does not change.
 - **It shows images.** A line `![login page](/abs/path.png)` in a reply shows that local picture inside the reply. The plugin reads the file on your machine; the image never enters the model's context.
-- **It reminds the agent.** A short set of rules ([rules.md](rules.md), about 600 tokens) is handed to the model now and then. It asks for a fitting diagram in almost every reply, picked by what is being explained (a flow, a state machine, a schema, a schedule), and for a screenshot instead of a description.
+- **It reminds the agent.** A short set of rules ([rules.md](rules.md), about 850 tokens) is handed to the model now and then. It asks for a diagram wherever the answer has a shape (a flow, a state machine, a schema, a schedule), for words that carry what the diagram cannot (the reason, the numbers, the traps) instead of retelling it, and for a screenshot instead of a description.
 
 Claude Code and pi share the same drawing code and the same rules, so a diagram looks the same in both. The same question in Claude Code:
 
