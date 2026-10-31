@@ -9,6 +9,9 @@ const here = path.dirname(fileURLToPath(import.meta.url))
 const { render } = await import(path.join(here, '../core/vendor/lovely-mermaid/index.js'))
 const casesDir = path.join(here, 'upstream/cases')
 const verbose = process.argv.includes('-v')
+// Cases a patch changes on purpose (core/vendor/README.md): counted apart, never a FAIL.
+const CHANGED = new Set(['pie/basic.md'])
+let changed = 0
 
 // Each case file holds ```mermaid fences, each followed by a ```text fence with the expected plain art, or `(null)`.
 let pass = 0
@@ -35,10 +38,11 @@ for (const file of fs.readdirSync(casesDir, { recursive: true }).filter(f => f.e
     const want = expected.kind === 'null' ? null : lines.slice(expected.start, expected.end).join('\n')
     const got = art === null ? null : art.plain.join('\n')
     if (want === got) return pass++
+    if (CHANGED.has(file.split(path.sep).join('/'))) return changed++
     fail++
     console.log(`FAIL ${file}:${b.start}`)
     if (verbose) console.log(`${src}\n--- want\n${want}\n--- got\n${got}\n`)
   })
 }
-console.log(`${pass} pass, ${fail} fail`)
+console.log(`${pass} pass, ${fail} fail${changed ? `, ${changed} changed on purpose` : ''}`)
 process.exitCode = fail === 0 ? 0 : 1

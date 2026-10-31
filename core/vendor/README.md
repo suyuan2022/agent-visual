@@ -8,6 +8,7 @@ Terms from lovely's layout: a *rank* is one row (top-down) or column (left-right
 
 | Where | What | Why |
 |---|---|---|
+| `diagrams/pie.js` | Bars are `▆` in whole cells with no `░` track, the longest slice spans the full 24-column bar; labels keep up to 40 columns | Full-cell bars over a full-cell track ran the rows together into one solid block, and the eighth-block ends made a ragged edge. `tests/upstream.mjs` counts `pie/basic.md` as changed on purpose. |
 | `layout.js` `contentW`, adjacent back edges | `cx + 2` → `cx + 3` | Upstream 5826e10, released after 0.3.3: a back-edge label lost its last character. |
 | `canvas.js`, `layout.js` `placeLabel`, `index.js`, `types.d.ts` | `render()` returns `lostLabels: {label, from, to}[]` | `placeLabel` silently stopped at the first occupied cell, so a label that collided vanished. `fit()` lists them under the drawing. |
 | `layout.js` `splitArrivals`, `placeTd`, `busSpans`, `routeForward` call | Top-down: two or more arrivals with a verb or card, from different sources, into one node each get their own entry on its top edge, the box widened to hold them | They shared one arrowhead and every label after the first was lost (`A -->\|x\| C`, `B -->\|y\| C` drew only `x`). |

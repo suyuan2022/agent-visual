@@ -9,9 +9,12 @@ import { MAX_NODES } from '../graph.js';
 import { cleanLabel, fitLabel } from '../labels.js';
 import { headerKind, nonEmpty, quoteMask, statementsOf, words } from '../statements.js';
 import { stringWidth } from '../width.js';
-/** Columns of the full-scale bar; eighth blocks refine below one cell. */
-const BAR_W = 20;
-const EIGHTHS = ['', '▏', '▎', '▍', '▌', '▋', '▊', '▉'];
+// agent-visual patch: bars are lower blocks in whole cells with no track, the longest slice
+// spans the full bar, so rows stay apart and bar ends line up (full-cell blocks and a
+// full-cell track made the rows run together into one solid block).
+/** Columns of the longest bar. */
+const BAR_W = 24;
+const BAR = '▆';
 export const pie = {
     kind: 'pie',
     headers: ['pie'],
@@ -28,6 +31,7 @@ export const pie = {
             const data = showData ? `  (${s.value})` : '';
             return { ...s, share, suffix: pct + data };
         });
+        const most = Math.max(...rows.map((r) => r.share));
         const barX = labelW + 2;
         const suffixX = barX + BAR_W + 1;
         const width = suffixX + Math.max(...rows.map((r) => stringWidth(r.suffix)));
@@ -39,14 +43,11 @@ export const pie = {
         rows.forEach((r, i) => {
             const y = top + i;
             drawText(canvas, r.label, 0, y, 'text');
-            const eighths = Math.round(r.share * BAR_W * 8);
-            let bar = '█'.repeat(Math.floor(eighths / 8)) + EIGHTHS[eighths % 8];
-            // A nonzero slice always shows at least a sliver.
-            if (bar === '' && r.value > 0)
-                bar = '▏';
-            drawText(canvas, bar, barX, y, 'edge');
-            // The unfilled remainder is a track, so every bar shows its full scale.
-            drawText(canvas, '░'.repeat(BAR_W - stringWidth(bar)), barX + stringWidth(bar), y, 'border');
+            let cells = most === 0 ? 0 : Math.round((r.share / most) * BAR_W);
+            // A nonzero slice always shows at least one cell.
+            if (cells === 0 && r.value > 0)
+                cells = 1;
+            drawText(canvas, BAR.repeat(cells), barX, y, 'edge');
             drawText(canvas, r.suffix, suffixX, y, 'edgeLabel');
         });
         return { canvas, warnings, classDefs: {} };
@@ -92,7 +93,7 @@ function parseSlice(st) {
     const colon = chars.findIndex((c, i) => c === ':' && !quoted[i]);
     if (colon === -1)
         return null;
-    const label = fitLabel(cleanLabel(chars.slice(0, colon).join('')), 24);
+    const label = fitLabel(cleanLabel(chars.slice(0, colon).join('')), 40);
     const value = Number(chars
         .slice(colon + 1)
         .join('')

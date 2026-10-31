@@ -1,6 +1,6 @@
-diff -ru -x *.map -x LICENSE a/canvas.js b/canvas.js
---- a/canvas.js	2026-10-30 21:19:50
-+++ b/canvas.js	2026-10-30 23:36:23
+diff -ru -x *.map -x LICENSE -x README.md a/canvas.js b/canvas.js
+--- a/canvas.js	2026-10-31 14:04:04
++++ b/canvas.js	2026-10-31 14:04:04
 @@ -39,6 +39,8 @@
      /** Link target stamped on cells painted while set, like `curTag`. */
      curHref;
@@ -10,9 +10,65 @@ diff -ru -x *.map -x LICENSE a/canvas.js b/canvas.js
          const n = w * h;
          this.w = w;
          this.h = h;
-diff -ru -x *.map -x LICENSE a/index.js b/index.js
---- a/index.js	2026-10-30 21:19:50
-+++ b/index.js	2026-10-30 23:36:23
+diff -ru -x *.map -x LICENSE -x README.md a/diagrams/pie.js b/diagrams/pie.js
+--- a/diagrams/pie.js	2026-10-31 14:04:04
++++ b/diagrams/pie.js	2026-10-31 14:04:04
+@@ -9,9 +9,12 @@
+ import { cleanLabel, fitLabel } from '../labels.js';
+ import { headerKind, nonEmpty, quoteMask, statementsOf, words } from '../statements.js';
+ import { stringWidth } from '../width.js';
+-/** Columns of the full-scale bar; eighth blocks refine below one cell. */
+-const BAR_W = 20;
+-const EIGHTHS = ['', '▏', '▎', '▍', '▌', '▋', '▊', '▉'];
++// agent-visual patch: bars are lower blocks in whole cells with no track, the longest slice
++// spans the full bar, so rows stay apart and bar ends line up (full-cell blocks and a
++// full-cell track made the rows run together into one solid block).
++/** Columns of the longest bar. */
++const BAR_W = 24;
++const BAR = '▆';
+ export const pie = {
+     kind: 'pie',
+     headers: ['pie'],
+@@ -28,6 +31,7 @@
+             const data = showData ? `  (${s.value})` : '';
+             return { ...s, share, suffix: pct + data };
+         });
++        const most = Math.max(...rows.map((r) => r.share));
+         const barX = labelW + 2;
+         const suffixX = barX + BAR_W + 1;
+         const width = suffixX + Math.max(...rows.map((r) => stringWidth(r.suffix)));
+@@ -39,14 +43,11 @@
+         rows.forEach((r, i) => {
+             const y = top + i;
+             drawText(canvas, r.label, 0, y, 'text');
+-            const eighths = Math.round(r.share * BAR_W * 8);
+-            let bar = '█'.repeat(Math.floor(eighths / 8)) + EIGHTHS[eighths % 8];
+-            // A nonzero slice always shows at least a sliver.
+-            if (bar === '' && r.value > 0)
+-                bar = '▏';
+-            drawText(canvas, bar, barX, y, 'edge');
+-            // The unfilled remainder is a track, so every bar shows its full scale.
+-            drawText(canvas, '░'.repeat(BAR_W - stringWidth(bar)), barX + stringWidth(bar), y, 'border');
++            let cells = most === 0 ? 0 : Math.round((r.share / most) * BAR_W);
++            // A nonzero slice always shows at least one cell.
++            if (cells === 0 && r.value > 0)
++                cells = 1;
++            drawText(canvas, BAR.repeat(cells), barX, y, 'edge');
+             drawText(canvas, r.suffix, suffixX, y, 'edgeLabel');
+         });
+         return { canvas, warnings, classDefs: {} };
+@@ -92,7 +93,7 @@
+     const colon = chars.findIndex((c, i) => c === ':' && !quoted[i]);
+     if (colon === -1)
+         return null;
+-    const label = fitLabel(cleanLabel(chars.slice(0, colon).join('')), 24);
++    const label = fitLabel(cleanLabel(chars.slice(0, colon).join('')), 40);
+     const value = Number(chars
+         .slice(colon + 1)
+         .join('')
+diff -ru -x *.map -x LICENSE -x README.md a/index.js b/index.js
+--- a/index.js	2026-10-31 14:04:04
++++ b/index.js	2026-10-31 14:04:04
 @@ -54,6 +54,7 @@
                  { text: title, role: 'title' },
              ], []);
@@ -23,9 +79,9 @@ diff -ru -x *.map -x LICENSE a/index.js b/index.js
  }
  //# sourceMappingURL=index.js.map
 \ No newline at end of file
-diff -ru -x *.map -x LICENSE a/layout.d.ts b/layout.d.ts
---- a/layout.d.ts	2026-10-30 21:19:50
-+++ b/layout.d.ts	2026-10-30 23:36:23
+diff -ru -x *.map -x LICENSE -x README.md a/layout.d.ts b/layout.d.ts
+--- a/layout.d.ts	2026-10-31 14:04:04
++++ b/layout.d.ts	2026-10-31 14:04:04
 @@ -59,7 +59,8 @@
   * neighbours: each node drifts toward the average of its neighbours while
   * ranks keep their order and boxes keep `sep` between them.
@@ -36,9 +92,9 @@ diff -ru -x *.map -x LICENSE a/layout.d.ts b/layout.d.ts
  /** A span competing for a track: the covered coordinate range plus its edge. */
  interface TrackSpan {
      start: number;
-diff -ru -x *.map -x LICENSE a/layout.js b/layout.js
---- a/layout.js	2026-10-30 21:19:50
-+++ b/layout.js	2026-10-30 23:36:23
+diff -ru -x *.map -x LICENSE -x README.md a/layout.js b/layout.js
+--- a/layout.js	2026-10-31 14:04:04
++++ b/layout.js	2026-10-31 14:04:04
 @@ -28,6 +28,48 @@
   * per-end placement (lanes, self-loops). Forward routes place `cardFrom` /
   * `cardTo` at their own ends instead.
@@ -759,9 +815,9 @@ diff -ru -x *.map -x LICENSE a/layout.js b/layout.js
          canvas.set(x, row, c, 'edgeLabel');
          for (let k = 1; k < cw; k++)
              canvas.set(x + k, row, CONT, 'edgeLabel');
-diff -ru -x *.map -x LICENSE a/types.d.ts b/types.d.ts
---- a/types.d.ts	2026-10-30 21:19:50
-+++ b/types.d.ts	2026-10-30 23:36:23
+diff -ru -x *.map -x LICENSE -x README.md a/types.d.ts b/types.d.ts
+--- a/types.d.ts	2026-10-31 14:04:04
++++ b/types.d.ts	2026-10-31 14:04:04
 @@ -59,5 +59,11 @@
      width: number;
      classDefs: Record<string, Record<string, string>>;
