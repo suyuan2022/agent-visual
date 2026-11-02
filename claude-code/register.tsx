@@ -5,8 +5,8 @@ import type { Color, FsBytes, Register, RenderNode } from 'claude-code'
 import { findDiagrams, fit, markdownSafe, needsWholeMarkdown, plainRewrite, replyLang, t } from '../core/core.ts'
 import type { Lang } from '../core/core.ts'
 import type { Diagram, Fit } from '../core/core.ts'
-import { bmpToHalfBlocks, cellSize, findImages, imageBox, pngSize } from './images.ts'
-import type { ImageLine } from './images.ts'
+import { bmpToHalfBlocks, cellSize, findImages, imageBox, pngSize, rexCell } from './images.ts'
+import type { Cell, ImageLine } from './images.ts'
 import { registerRules } from './rules.ts'
 import type { Role } from '../core/vendor/lovely-mermaid/index.js'
 
@@ -44,6 +44,10 @@ const CONVERTIBLE = /\.(png|jpe?g|gif|webp|heic|tiff?|bmp)$/i
 const pictures = new Map<string, Loaded>()
 // Half-block cells per file version and box.
 const rastered = new Map<string, string>()
+// In Rex, PNGs made at a box's exact pixels, per file version and size.
+const exactPngs = new Map<string, string>()
+// Rex's cell pixels for a pane, asked again after a few seconds: a font, line height or display change moves them.
+let rexCells: { block: string; at: number; cell: Cell | undefined } | undefined
 
 
 function hash(s: string): string {
@@ -84,11 +88,32 @@ export const register: Register = (on, options) => {
       return rewritten === text ? next(e) : next({ ...e, props: { ...e.props, text: rewritten } })
     }
 
-    // The engine draws an `Image` only where the terminal speaks kitty graphics with Unicode placeholders (kitty,
-    // Ghostty). Everywhere else (Rex, iTerm2, Terminal) the picture is drawn in half blocks: two pixels a cell.
+    // The engine draws an `Image` only where the terminal speaks kitty graphics with Unicode placeholders: kitty
+    // and Ghostty, or any terminal under CLAUDE_CODE_FORCE_TERMINAL_IMAGES. Rex speaks them but draws a picture's
+    // pixels one to one instead of scaling them to the box, so there each picture is made at the box's exact
+    // pixels, in the cell size Rex reports for this pane. Everywhere else (iTerm2, Terminal, Rex without the
+    // variable) the picture is drawn in half blocks: two pixels a cell.
     const term = images.length === 0 ? '' : `${(await $.env.get('TERM_PROGRAM')) ?? ''} ${(await $.env.get('TERM')) ?? ''}`.toLowerCase()
-    const graphics = /ghostty|kitty/.test(term) || (images.length > 0 && (await $.env.get('KITTY_WINDOW_ID')) !== undefined)
+    const rex = images.length > 0 && term.startsWith('rex ') && Boolean(await $.env.get('CLAUDE_CODE_FORCE_TERMINAL_IMAGES')) ? await rexCellSize() : undefined
+    const graphics = /ghostty|kitty/.test(term) || rex !== undefined || (images.length > 0 && (await $.env.get('KITTY_WINDOW_ID')) !== undefined)
     const tmp = images.length === 0 ? '/tmp/' : ((await $.env.get('TMPDIR')) ?? '/tmp/')
+
+    async function rexCellSize(): Promise<Cell | undefined> {
+      const block = await $.env.get('REX_BLOCK')
+      if (!block) return undefined
+      if (rexCells?.block === block && Date.now() - rexCells.at < 5000) return rexCells.cell
+      const dir = await $.env.get('REX_BIN_DIR')
+      const session = await $.env.get('REX_SESSION')
+      let cell: Cell | undefined
+      try {
+        const got = await $.process.run([dir ? `${dir}/rex` : 'rex', 'block', 'call', ...(session ? ['-s', session] : []), '-b', block, 'size'])
+        cell = got.exitCode === 0 ? rexCell(got.stdout) : undefined
+      } catch {
+        cell = undefined
+      }
+      rexCells = { block, at: Date.now(), cell }
+      return cell
+    }
 
     async function load(path: string): Promise<Loaded> {
       let stat
@@ -133,17 +158,58 @@ export const register: Register = (on, options) => {
       return loaded
     }
     const loaded = new Map<ImageLine, Loaded>(await Promise.all(images.map(async img => [img, await load(img.path)] as const)))
-    const cell = cellSize(String(options.cellSize ?? ''), home?.startsWith('/Users/') === true)
+    const cell = rex ?? cellSize(String(options.cellSize ?? ''), home?.startsWith('/Users/') === true)
     const boxes = new Map<ImageLine, { columns: number; rows: number }>()
-    for (const [img, got] of loaded) if (got.kind === 'picture') boxes.set(img, imageBox(got.picture, { columns, rows: e.viewport?.rows ?? 40 }, cell, img.width))
-    const rasters = new Map<ImageLine, string>()
-    if (!graphics) {
+    for (const [img, got] of loaded) if (got.kind === 'picture') boxes.set(img, imageBox(got.picture, { columns, rows: e.viewport?.rows ?? 40 }, cell, img.width, rex !== undefined))
+    // The PNG each picture is drawn from: its own, or in Rex one made at the box's pixels.
+    const pngs = new Map<ImageLine, string>()
+    if (graphics) {
       await Promise.all(
         [...boxes].map(async ([img, box]) => {
-          const cells = await halfBlocks(img.path, box, tmp)
-          if (cells !== undefined) rasters.set(img, cells)
+          const got = loaded.get(img)
+          if (got?.kind !== 'picture') return
+          if (rex === undefined) return void pngs.set(img, got.picture.png)
+          const made = await exactPng(img.path, box, rex, tmp)
+          if (made === undefined) return
+          pngs.set(img, made.png)
+          boxes.set(img, made.box)
         }),
       )
+    }
+    const rasters = new Map<ImageLine, string>()
+    await Promise.all(
+      [...boxes].map(async ([img, box]) => {
+        if (pngs.has(img)) return
+        const cells = await halfBlocks(img.path, box, tmp)
+        if (cells !== undefined) rasters.set(img, cells)
+      }),
+    )
+
+    // The picture at exactly the box's pixels, for Rex; the box shrinks while the PNG is past the cap.
+    async function exactPng(path: string, box: { columns: number; rows: number }, px: Cell, dir: string): Promise<{ png: string; box: { columns: number; rows: number } } | undefined> {
+      try {
+        const stat = await $.fs.stat(path)
+        for (const scale of [1, 0.8, 0.64, 0.5]) {
+          const rows = Math.max(1, Math.round(box.rows * scale))
+          const fit = { columns: Math.max(1, Math.round((box.columns * rows) / box.rows)), rows }
+          const width = fit.columns * px.width
+          const height = fit.rows * px.height
+          const key = `${path}\n${stat.mtimeMs}\n${width}x${height}`
+          const hit = exactPngs.get(key)
+          if (hit !== undefined) return { png: hit, box: fit }
+          const out = `${dir}agent-visual-${hash(key)}.png`.replace(/\/\/+/g, '/')
+          const made = await $.process.run(['sips', '-s', 'format', 'png', '-z', String(height), String(width), path, '--out', out])
+          if (made.exitCode !== 0) return undefined
+          if ((await $.fs.stat(out)).size > MAX_PNG) continue
+          const { base64 } = (await $.fs.read(out, { as: 'bytes' })) as FsBytes
+          if (exactPngs.size >= 12) exactPngs.delete(exactPngs.keys().next().value as string)
+          exactPngs.set(key, base64)
+          return { png: base64, box: fit }
+        }
+      } catch {
+        // No `sips` here, or the file went away: half blocks instead.
+      }
+      return undefined
     }
 
     // The picture as half blocks: macOS `sips` scales it to one pixel per column and two per row, as a BMP read here.
@@ -190,13 +256,14 @@ export const register: Register = (on, options) => {
           <Button key={`open:${item.start}`} plain dimColor label={name} onPress={() => void $.process.run([opener, img.path])} />
         )
         if (got.kind === 'missing') children.push(<Text color="warning">{`${t('Image not found', lang)}${lang === 'zh' ? '：' : ': '}${img.path}`}</Text>)
-        else if (got.kind === 'unshown' || (!graphics && !rasters.has(img))) children.push(link)
+        else if (got.kind === 'unshown' || (!pngs.has(img) && !rasters.has(img))) children.push(link)
         else {
           const box = boxes.get(img)!
+          const png = pngs.get(img)
           children.push(
             <Box flexDirection="column" paddingLeft={img.center ? Math.max(0, Math.floor((columns - box.columns) / 2)) : 0}>
-              {graphics ? (
-                <Image source={{ png: got.picture.png }} columns={box.columns} rows={box.rows} alt={img.alt || ' '} />
+              {png !== undefined ? (
+                <Image source={{ png }} columns={box.columns} rows={box.rows} alt={img.alt || ' '} />
               ) : (
                 <Raster key={`img-${item.start}`} columns={box.columns} rows={box.rows} cells={rasters.get(img)!} />
               )}

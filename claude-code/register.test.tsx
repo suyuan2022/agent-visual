@@ -100,6 +100,8 @@ const PIC = '/pictures/pic.png'
 const ghostty = { TERM_PROGRAM: 'ghostty', TERM: 'xterm-ghostty', HOME: '/Users/nobody' }
 // tests/fixtures/pic.png's signature and header: a 320×160 PNG.
 const PNG_HEAD = 'iVBORw0KGgoAAAANSUhEUgAAAUAAAACgCAIAAADywSLL'
+// The same picture as sips makes it for Rex: a 286×144 PNG's signature and header.
+const EXACT_HEAD = 'iVBORw0KGgoAAAANSUhEUgAAAR4AAACQCAIAAABRZpOd'
 
 // Stands for the files the hooks read: the picture, and rules.md under the plugin's root.
 function files(on: Parameters<Parameters<typeof test>[1]>[1]) {
@@ -175,6 +177,47 @@ test('the cellSize option sets the pixels a cell holds', { options: { cellSize: 
   mock.env(on, ghostty)
   const ui = await $.ui.mount({ plugin: 'agent-visual', surface: 'terminal', component: 'AssistantMessage', props: { text: `![图](${PIC})`, isFirstOfReply: true }, viewport })
   expect((await ui.findAll({ type: 'Image' })).map(p => [p.props.columns, p.props.rows])).toEqual([[40, 10]])
+  await ui.unmount()
+})
+
+// Stands for a Rex pane: the picture, the PNGs sips makes under TMPDIR, and `rex` reporting 22×48 px cells.
+const REX = { TERM_PROGRAM: 'rex', TERM: 'xterm-256color', HOME: '/Users/nobody', TMPDIR: '/tmp/t/', REX_BLOCK: 'block:b', REX_SESSION: 'session:s', REX_BIN_DIR: '/opt/rex' }
+function rexPane(on: Parameters<Parameters<typeof test>[1]>[1], runs: string[][]) {
+  on('fs.stat', async (_$, e) => (e.path === PIC || e.path.startsWith('/tmp/t/agent-visual-') ? { value: { kind: 'file' as const, size: 550, mtimeMs: 1, isLink: false } } : { deny: `ENOENT: ${e.path}` }))
+  on('fs.read', async (_$, e) => {
+    if (e.path === PIC) return { value: { base64: PNG_HEAD } }
+    if (e.path.startsWith('/tmp/t/agent-visual-') && e.path.endsWith('.png')) return { value: { base64: EXACT_HEAD } }
+    return { deny: `ENOENT: ${e.path}` }
+  })
+  on('process.run', async (_$, e) => {
+    runs.push([...e.argv])
+    const stdout = e.argv[0] === '/opt/rex/rex' ? '{"columns":53,"rows":37,"cell_width_px":22,"cell_height_px":48}' : ''
+    return { value: { exitCode: 0, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
+  })
+}
+
+test('in Rex under CLAUDE_CODE_FORCE_TERMINAL_IMAGES a picture is made at the box pixels Rex reports', async ($, on) => {
+  engine(on)
+  const runs: string[][] = []
+  rexPane(on, runs)
+  mock.env(on, { ...REX, CLAUDE_CODE_FORCE_TERMINAL_IMAGES: '1' })
+  const ui = await $.ui.mount({ plugin: 'agent-visual', surface: 'terminal', component: 'AssistantMessage', props: { text: `![图](${PIC})`, isFirstOfReply: true }, viewport })
+  // 320×160 px at Rex's 22×48 is 13×3 cells, made at 286×144 px.
+  const pics = await ui.findAll({ type: 'Image' })
+  expect(pics.map(p => [p.props.columns, p.props.rows, (p.props.source as { png: string }).png])).toEqual([[13, 3, EXACT_HEAD]])
+  expect(runs[0]).toEqual(['/opt/rex/rex', 'block', 'call', '-s', 'session:s', '-b', 'block:b', 'size'])
+  expect(runs.find(r => r[0] === 'sips')?.slice(0, 7)).toEqual(['sips', '-s', 'format', 'png', '-z', '144', '286'])
+  await ui.unmount()
+})
+
+test('in Rex without CLAUDE_CODE_FORCE_TERMINAL_IMAGES no Image is drawn and Rex is not asked', async ($, on) => {
+  engine(on)
+  const runs: string[][] = []
+  rexPane(on, runs)
+  mock.env(on, REX)
+  const ui = await $.ui.mount({ plugin: 'agent-visual', surface: 'terminal', component: 'AssistantMessage', props: { text: `![图](${PIC})`, isFirstOfReply: true }, viewport })
+  expect(await ui.find({ type: 'Image' })).toBeUndefined()
+  expect(runs.some(r => r[0] === '/opt/rex/rex')).toBe(false)
   await ui.unmount()
 })
 

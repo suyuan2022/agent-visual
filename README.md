@@ -145,11 +145,11 @@ Diagrams work in any terminal. Images need a terminal with an image protocol. On
 |---|---|---|---|
 | Ghostty | yes | yes | yes |
 | kitty | yes (not tested) | yes (not tested) | yes (not tested) |
-| Rex | a coarse preview in half blocks | yes | yes |
+| Rex | yes, with `CLAUDE_CODE_FORCE_TERMINAL_IMAGES=1`; else a coarse preview in half blocks | yes | yes |
 | iTerm2, WezTerm | a coarse preview in half blocks (not tested) | yes (not tested) | yes (not tested) |
 | Others, or inside tmux | a coarse preview in half blocks (macOS only) | no: the name as a link | click the link |
 
-Claude Code draws real pictures only in kitty and Ghostty. Everywhere else the plugin draws the picture with half-block characters, two pixels a cell: enough to see the layout, not to read small text. Click the name under it to open the file.
+Claude Code draws real pictures only in kitty and Ghostty, and in Rex once `CLAUDE_CODE_FORCE_TERMINAL_IMAGES=1` is set for it (for example `[[ "$TERM_PROGRAM" == rex ]] && export CLAUDE_CODE_FORCE_TERMINAL_IMAGES=1` in `~/.zshrc`). Rex draws a picture's pixels one to one rather than scaling them to the box, so there the plugin makes each picture at the box's exact pixels, in the cell size Rex reports for the pane. Everywhere else the plugin draws the picture with half-block characters, two pixels a cell: enough to see the layout, not to read small text. Click the name under it to open the file.
 
 ## Make it yours
 

@@ -145,11 +145,11 @@ flowchart TD
 |---|---|---|---|
 | Ghostty | 能 | 能 | 能 |
 | kitty | 能（未实测） | 能（未实测） | 能（未实测） |
-| Rex | 用半格方块画的粗略预览 | 能 | 能 |
+| Rex | 能，要设 `CLAUDE_CODE_FORCE_TERMINAL_IMAGES=1`；不设时是半格方块画的粗略预览 | 能 | 能 |
 | iTerm2、WezTerm | 用半格方块画的粗略预览（未实测） | 能（未实测） | 能（未实测） |
 | 其他终端、tmux 里 | 用半格方块画的粗略预览（仅 macOS） | 不能：显示可点的图片名 | 点图片名打开 |
 
-Claude Code 只在 kitty 和 Ghostty 里画真正的图片。其他终端里，插件用半格方块字符画图，一格两个像素：能看出版面，看不清小字。点图下面的图片名就能打开原图。
+Claude Code 只在 kitty 和 Ghostty 里画真正的图片；Rex 里给它设上 `CLAUDE_CODE_FORCE_TERMINAL_IMAGES=1` 也能画（比如在 `~/.zshrc` 里写 `[[ "$TERM_PROGRAM" == rex ]] && export CLAUDE_CODE_FORCE_TERMINAL_IMAGES=1`）。Rex 按图片原像素一比一地画、不按格子缩放，所以插件在 Rex 里按它报给这个格子的格子像素，把每张图先缩成格子的精确尺寸。其他终端里，插件用半格方块字符画图，一格两个像素：能看出版面，看不清小字。点图下面的图片名就能打开原图。
 
 ## 按自己的习惯改
 

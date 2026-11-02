@@ -64,6 +64,18 @@ export function cellSize(setting: string | undefined, macos: boolean): Cell {
   return macos ? { width: 14, height: 28 } : { width: 8, height: 16 }
 }
 
+/** Rex's cell size in screen pixels, from what `rex block call … size` prints; undefined when it names none. */
+export function rexCell(json: string): Cell | undefined {
+  try {
+    const d = JSON.parse(json) as { cell_width_px?: unknown; cell_height_px?: unknown }
+    const width = Number(d.cell_width_px)
+    const height = Number(d.cell_height_px)
+    return width > 0 && height > 0 ? { width, height } : undefined
+  } catch {
+    return undefined
+  }
+}
+
 /** Of the window's height, the most a picture takes, as in pi. */
 export const MAX_HEIGHT_RATIO = 0.85
 
@@ -71,17 +83,21 @@ export const MAX_HEIGHT_RATIO = 0.85
  * The picture's box in cells, as pi sizes it: `w=` when asked, else the
  * picture's own pixels at `cell`; never wider than `columns` minus 2, nor
  * taller than 85% of the window's `rows` (the width then shrinks to keep the shape).
+ * `exact` is for a picture made at the box's own pixels (Rex): the width is then
+ * matched to the rows, so the rounding lands in a column's few pixels, not a row's many.
  */
-export function imageBox(px: { width: number; height: number }, room: { columns: number; rows: number }, cell: Cell, asked?: number): { columns: number; rows: number } {
+export function imageBox(px: { width: number; height: number }, room: { columns: number; rows: number }, cell: Cell, asked?: number, exact = false): { columns: number; rows: number } {
   const maxWidth = Math.min(255, Math.max(10, room.columns - 2))
   const maxHeight = Math.min(255, Math.max(8, Math.floor(room.rows * MAX_HEIGHT_RATIO)))
   let columns = Math.max(10, Math.min(asked ?? Math.ceil(px.width / cell.width), maxWidth))
   const tall = (c: number) => Math.max(1, Math.round((c * cell.width * px.height) / px.width / cell.height))
+  const wide = (r: number) => Math.round((r * cell.height * px.width) / px.height / cell.width)
   let rows = tall(columns)
   if (rows > maxHeight) {
     rows = maxHeight
-    columns = Math.max(1, Math.min(columns, Math.round((rows * cell.height * px.width) / px.height / cell.width)))
+    columns = Math.max(1, Math.min(columns, wide(rows)))
   }
+  if (exact) columns = Math.max(1, Math.min(wide(rows), maxWidth))
   return { columns, rows }
 }
 

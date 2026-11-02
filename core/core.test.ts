@@ -2,7 +2,7 @@ import { expect, test } from 'claude-code/testing'
 
 import { findDiagrams, fit, needsWholeMarkdown, plainRewrite, replyLang, topDown } from './core.ts'
 import type { Fit } from './core.ts'
-import { cellSize, findImages, imageBox } from '../claude-code/images.ts'
+import { cellSize, findImages, imageBox, rexCell } from '../claude-code/images.ts'
 import { normalize } from './normalize.ts'
 
 const TREE = [
@@ -234,6 +234,14 @@ test('pictures size like pi: own pixels at the cell size, capped at the width le
   // `w=` asks for columns, never past the width; a tiny picture still gets 10.
   expect(imageBox({ width: 320, height: 160 }, { columns: 100, rows: 40 }, LOW, 200)).toEqual({ columns: 98, rows: 25 })
   expect(imageBox({ width: 16, height: 16 }, { columns: 100, rows: 40 }, LOW)).toEqual({ columns: 10, rows: 5 })
+  // Made at the box's own pixels (Rex, 22×48): the width follows the rows, so 320×160 is 13×3 (286×144 px), not 15×3.
+  const REX = { width: 22, height: 48 }
+  expect(imageBox({ width: 320, height: 160 }, { columns: 100, rows: 40 }, REX)).toEqual({ columns: 15, rows: 3 })
+  expect(imageBox({ width: 320, height: 160 }, { columns: 100, rows: 40 }, REX, undefined, true)).toEqual({ columns: 13, rows: 3 })
+  expect(imageBox({ width: 3000, height: 1000 }, { columns: 100, rows: 40 }, REX, undefined, true)).toEqual({ columns: 98, rows: 15 })
+  expect(rexCell('{"columns":53,"rows":37,"cell_width_px":22,"cell_height_px":48}')).toEqual(REX)
+  expect(rexCell('{"columns":53}')).toBeUndefined()
+  expect(rexCell('not json')).toBeUndefined()
   const lines = findImages('前\n![a](~/x.png "w=30 center")\n![b](rel.png)\n```\n![c](/y.png)\n```\n  ![d](file:///z%20z.png)', '/Users/me')
   expect(lines.map(l => [l.alt, l.path, l.width, l.center])).toEqual([['a', '/Users/me/x.png', 30, true], ['d', '/z z.png', undefined, false]])
 })
