@@ -24,7 +24,7 @@ agent-visual changes what the agent shows, not only how it is drawn:
 
 - **It draws.** Every Mermaid block in a reply becomes a box-drawing diagram in place, in your theme's colors. The saved message does not change.
 - **It shows images.** A line `![login page](/abs/path.png)` in a reply shows that local picture inside the reply. The plugin reads the file on your machine; the image never enters the model's context.
-- **It reminds the agent.** A short set of rules ([rules.md](rules.md), about 850 tokens) is handed to the model now and then. It asks for a diagram wherever the answer has a shape (a flow, a state machine, a schema, a schedule), for words that carry what the diagram cannot (the reason, the numbers, the traps) instead of retelling it, and for a screenshot instead of a description.
+- **It reminds the agent.** A short set of rules ([rules.md](rules.md), about 950 tokens) is handed to the model now and then. It asks for at least one fitting diagram when a reply explains how something works, finds a cause, compares options or lays out a plan, and for none when the words are the work (copy, an email, a translation). It also asks for words that carry what the diagram cannot (the reason, the numbers, the traps) instead of retelling it, and for a screenshot instead of a description.
 
 Claude Code and pi share the same drawing code and the same rules, so a diagram looks the same in both. The same question in Claude Code:
 
@@ -184,6 +184,7 @@ In pi, set `markdown.mermaid` back to its default by deleting the key.
 - Only Mermaid blocks and image lines at the top level are handled; inside a list or a quote they stay as written.
 - Nodes are drawn as rectangle, rounded or diamond; other `@{ shape }` values fall back to these. Labels are one line, and `<br>` becomes a space.
 - Claude Code on Linux has no `sips`, so non-PNG images and PNGs over 2 MiB show as a link only.
+- In the Claude desktop app's Code tab, the app itself draws Mermaid blocks and shows local images, and whether it draws Mermaid depends on the app's own feature flag. The plugin only hands over the rules there; its drawing and the `w=60 center` title work in the terminal.
 - Tested on macOS only.
 
 ## Repository layout
@@ -192,7 +193,7 @@ In pi, set `markdown.mermaid` back to its default by deleting the key.
 - `claude-code/`: the Claude Code plugin hooks
 - `pi/`: the pi extension
 - `rules.md`: the rules both hosts give the model
-- `tests/`: fixtures, including 316 examples from the Mermaid docs
+- `tests/`: fixtures, including 316 examples from the Mermaid docs, and `tests/rules/`, the scenarios for checking `rules.md`
 
 ## Development
 
@@ -201,6 +202,16 @@ claude plugin validate .
 claude plugin test .
 bun test pi/
 node tests/upstream.mjs
+```
+
+To check a change to `rules.md` (this calls Claude with Opus, about 42 answers per version plus one review):
+
+```sh
+node tests/rules.mjs gen new rules.md
+git show HEAD:rules.md > tests/rules/out/old-rules.md
+node tests/rules.mjs gen old tests/rules/out/old-rules.md
+node tests/rules.mjs score old new
+node tests/rules.mjs review old new
 ```
 
 ## Credits and license

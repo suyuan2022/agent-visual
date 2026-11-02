@@ -24,7 +24,7 @@ agent-visual 改变的是 agent 给你看什么，不只是怎么画：
 
 - 画图：回复里的 Mermaid 块原地画成终端框线图，颜色跟着主题走。存下来的消息不变。
 - 贴图：回复里单独一行 `![登录页](/绝对路径.png)`，这张本机图片就显示在正文里。图片由插件在本机读，不进模型上下文。
-- 提醒：把一份简短的规矩（[rules.md](rules.md)，约 850 token）时不时交给模型。它要求内容有结构的地方就画图（流程、状态机、数据表关系、排期），文字只写图表达不了的东西（原因、数字、坑），不把图再讲一遍；要给你看截图时直接贴图，而不是用文字描述。
+- 提醒：把一份简短的规矩（[rules.md](rules.md)，约 950 token）时不时交给模型。它要求讲原理、找原因、比方案、排计划的回复至少配一张合适的图，写文案、邮件、翻译这类成品文字时不配图；文字只写图表达不了的东西（原因、数字、坑），不把图再讲一遍；要给你看截图时直接贴图，而不是用文字描述。
 
 Claude Code 和 pi 用同一套画图代码和同一份规矩，同一张图两边长得一样。在 Claude Code 里问同一个问题：
 
@@ -184,6 +184,7 @@ pi 里把 `markdown.mermaid` 这个键删掉，就恢复默认。
 - 只处理顶格写的 Mermaid 块和图片行，放在列表或引用里的保持原样。
 - 节点外形只画矩形、圆角、菱形，其他 `@{ shape }` 归到这三种；标签只有一行，`<br>` 变成空格。
 - Claude Code 在 Linux 上没有 `sips`，非 PNG 和大于 2 MiB 的 PNG 只显示链接。
+- 在 Claude 桌面 App 的 Code 标签里，Mermaid 块和本机图片由 App 自己显示，能否画 Mermaid 取决于 App 自己的功能开关。插件在那里只负责交规矩；它的画图和 `w=60 center` 这类 title 只在终端生效。
 - 只在 macOS 上测过。
 
 ## 目录
@@ -192,7 +193,7 @@ pi 里把 `markdown.mermaid` 这个键删掉，就恢复默认。
 - `claude-code/`：Claude Code 插件的 hook
 - `pi/`：pi 扩展
 - `rules.md`：两边交给模型的规矩
-- `tests/`：测试用例，含 Mermaid 官方文档的 316 个示例
+- `tests/`：测试用例，含 Mermaid 官方文档的 316 个示例，以及 `tests/rules/`：检查 `rules.md` 用的场景
 
 ## 开发
 
@@ -201,6 +202,16 @@ claude plugin validate .
 claude plugin test .
 bun test pi/
 node tests/upstream.mjs
+```
+
+改了 `rules.md` 要复测时（会调用 Claude Opus，每个版本约 42 次回答，外加一次评审）：
+
+```sh
+node tests/rules.mjs gen new rules.md
+git show HEAD:rules.md > tests/rules/out/old-rules.md
+node tests/rules.mjs gen old tests/rules/out/old-rules.md
+node tests/rules.mjs score old new
+node tests/rules.mjs review old new
 ```
 
 ## 致谢和许可证

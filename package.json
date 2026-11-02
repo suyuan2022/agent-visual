@@ -1,6 +1,6 @@
 {
   "name": "agent-visual",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "private": true,
   "type": "module",
   "description": "Draw Mermaid diagrams and inline images in terminal replies, for Claude Code and pi.",
