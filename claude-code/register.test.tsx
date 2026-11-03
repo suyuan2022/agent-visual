@@ -180,24 +180,33 @@ test('the cellSize option sets the pixels a cell holds', { options: { cellSize: 
   await ui.unmount()
 })
 
-// Stands for a Rex pane: the picture, the PNGs sips makes under TMPDIR, and `rex` reporting 22×48 px cells.
+// Stands for a Rex pane: the pictures under /pictures/, the PNGs sips makes under TMPDIR, and `rex` reporting 22×48 px
+// cells. `answer` may answer a command first: late, refused (as a call cut short is), or not at all to fall through.
 const REX = { TERM_PROGRAM: 'rex', TERM: 'xterm-256color', HOME: '/Users/nobody', TMPDIR: '/tmp/t/', REX_BLOCK: 'block:b', REX_SESSION: 'session:s', REX_BIN_DIR: '/opt/rex' }
-function rexPane(on: Parameters<Parameters<typeof test>[1]>[1], runs: string[][]) {
-  on('fs.stat', async (_$, e) => (e.path === PIC || e.path.startsWith('/tmp/t/agent-visual-') ? { value: { kind: 'file' as const, size: 550, mtimeMs: 1, isLink: false } } : { deny: `ENOENT: ${e.path}` }))
+type Answer = { deny: string } | undefined
+function rexPane(on: Parameters<Parameters<typeof test>[1]>[1], runs: string[][], answer?: (argv: string[]) => Promise<Answer>) {
+  on('fs.stat', async (_$, e) => (e.path.startsWith('/pictures/') || e.path.startsWith('/tmp/t/agent-visual-') ? { value: { kind: 'file' as const, size: 550, mtimeMs: 1, isLink: false } } : { deny: `ENOENT: ${e.path}` }))
   on('fs.read', async (_$, e) => {
-    if (e.path === PIC) return { value: { base64: PNG_HEAD } }
+    if (e.path.startsWith('/pictures/')) return { value: { base64: PNG_HEAD } }
     if (e.path.startsWith('/tmp/t/agent-visual-') && e.path.endsWith('.png')) return { value: { base64: EXACT_HEAD } }
     return { deny: `ENOENT: ${e.path}` }
   })
   on('process.run', async (_$, e) => {
     runs.push([...e.argv])
+    const answered = await answer?.([...e.argv])
+    if (answered !== undefined) return answered
     const stdout = e.argv[0] === '/opt/rex/rex' ? '{"columns":53,"rows":37,"cell_width_px":22,"cell_height_px":48}' : ''
     return { value: { exitCode: 0, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
   })
 }
+const rexMount = ($: Parameters<Parameters<typeof test>[1]>[0], path: string) =>
+  $.ui.mount({ plugin: 'agent-visual', surface: 'terminal', component: 'AssistantMessage', props: { text: `![图](${path})`, isFirstOfReply: true }, viewport })
+const sizes = async (ui: Awaited<ReturnType<typeof rexMount>>) => (await ui.findAll({ type: 'Image' })).map(p => [p.props.columns, p.props.rows])
+const isSize = (argv: string[]) => argv[0] === '/opt/rex/rex'
 
 test('in Rex under CLAUDE_CODE_FORCE_TERMINAL_IMAGES a picture is made at the box pixels Rex reports', async ($, on) => {
   engine(on)
+  mock.clock(on)
   const runs: string[][] = []
   rexPane(on, runs)
   mock.env(on, { ...REX, CLAUDE_CODE_FORCE_TERMINAL_IMAGES: '1' })
@@ -219,6 +228,90 @@ test('in Rex without CLAUDE_CODE_FORCE_TERMINAL_IMAGES no Image is drawn and Rex
   expect(await ui.find({ type: 'Image' })).toBeUndefined()
   expect(runs.some(r => r[0] === '/opt/rex/rex')).toBe(false)
   await ui.unmount()
+})
+
+// Scrolling redraws a reply many times a second, and a newer drawing ends the calls of the one it replaces. Nothing a
+// call cut short says is kept: a kept failure drew every picture in half blocks (or as its name alone) until the reply
+// was drawn again.
+test('in Rex a cell-size query cut short is not kept: the next drawing asks again and draws the picture', async ($, on) => {
+  engine(on)
+  mock.clock(on)
+  const runs: string[][] = []
+  let cut = true
+  rexPane(on, runs, async argv => (cut && isSize(argv) ? { deny: 'aborted' } : undefined))
+  mock.env(on, { ...REX, REX_BLOCK: 'block:cut', CLAUDE_CODE_FORCE_TERMINAL_IMAGES: '1' })
+  const first = await rexMount($, '/pictures/cut.png')
+  expect(await first.find({ type: 'Image' })).toBeUndefined()
+  await first.unmount()
+  cut = false
+  const second = await rexMount($, '/pictures/cut.png')
+  expect(await sizes(second)).toEqual([[13, 3]])
+  await second.unmount()
+})
+
+test('in Rex a failed cell-size query keeps the size Rex gave last', async ($, on) => {
+  engine(on)
+  const clock = mock.clock(on)
+  const runs: string[][] = []
+  let cut = false
+  rexPane(on, runs, async argv => (cut && isSize(argv) ? { deny: 'aborted' } : undefined))
+  mock.env(on, { ...REX, REX_BLOCK: 'block:kept', CLAUDE_CODE_FORCE_TERMINAL_IMAGES: '1' })
+  const first = await rexMount($, '/pictures/kept.png')
+  expect(await sizes(first)).toEqual([[13, 3]])
+  await first.unmount()
+  // Past the few seconds a size is trusted, Rex is asked again and does not answer.
+  await clock.advance(6000)
+  cut = true
+  const second = await rexMount($, '/pictures/kept.png')
+  expect(await sizes(second)).toEqual([[13, 3]])
+  expect(runs.filter(isSize)).toHaveLength(2)
+  await second.unmount()
+})
+
+test('in Rex two drawings of one picture at once share one sips run; one cut short leaves the other to make it', async ($, on) => {
+  engine(on)
+  const clock = mock.clock(on)
+  const runs: string[][] = []
+  let cutRuns = 0
+  rexPane(on, runs, async argv => {
+    if (argv[0] !== 'sips' || argv[3] !== 'png') return undefined
+    await clock.sleep(100)
+    // The first run for cut.png ends with its drawing; any later one makes the PNG.
+    if (argv.includes('/pictures/shared-cut.png') && cutRuns++ === 0) return { deny: 'aborted' }
+    return undefined
+  })
+  mock.env(on, { ...REX, REX_BLOCK: 'block:shared', CLAUDE_CODE_FORCE_TERMINAL_IMAGES: '1' })
+  const pngRuns = (path: string) => runs.filter(r => r[0] === 'sips' && r[3] === 'png' && r.includes(path)).length
+
+  const both = [rexMount($, '/pictures/shared.png'), rexMount($, '/pictures/shared.png')]
+  await clock.advance(100)
+  const drawn = await Promise.all(both)
+  expect(await Promise.all(drawn.map(sizes))).toEqual([[[13, 3]], [[13, 3]]])
+  expect(pngRuns('/pictures/shared.png')).toBe(1)
+  for (const ui of drawn) await ui.unmount()
+
+  const cutBoth = [rexMount($, '/pictures/shared-cut.png'), rexMount($, '/pictures/shared-cut.png')]
+  await clock.advance(100)
+  await clock.advance(100)
+  const cutDrawn = await Promise.all(cutBoth)
+  expect(await sizes(cutDrawn[1]!)).toEqual([[13, 3]])
+  expect(pngRuns('/pictures/shared-cut.png')).toBe(2)
+  for (const ui of cutDrawn) await ui.unmount()
+})
+
+test('a picture read cut short is not kept: the next drawing reads it again', async ($, on) => {
+  engine(on)
+  let cut = true
+  on('fs.stat', async (_$, e) => (e.path === '/pictures/read-cut.png' ? { value: { kind: 'file' as const, size: 550, mtimeMs: 1, isLink: false } } : { deny: `ENOENT: ${e.path}` }))
+  on('fs.read', async (_$, e) => (e.path === '/pictures/read-cut.png' && !cut ? { value: { base64: PNG_HEAD } } : { deny: 'aborted' }))
+  mock.env(on, ghostty)
+  const first = await rexMount($, '/pictures/read-cut.png')
+  expect(await first.find({ type: 'Image' })).toBeUndefined()
+  await first.unmount()
+  cut = false
+  const second = await rexMount($, '/pictures/read-cut.png')
+  expect(await second.find({ type: 'Image' })).toBeDefined()
+  await second.unmount()
 })
 
 test('without kitty graphics a picture is drawn in half blocks from a BMP sips made', async () => {

@@ -46,14 +46,38 @@ const pictures = new Map<string, Loaded>()
 const rastered = new Map<string, string>()
 // In Rex, PNGs made at a box's exact pixels, per file version and size.
 const exactPngs = new Map<string, string>()
-// Rex's cell pixels for a pane, asked again after a few seconds: a font, line height or display change moves them.
-let rexCells: { block: string; at: number; cell: Cell | undefined } | undefined
-
+// Rex's cell pixels for a pane as Rex last gave them, asked again after a few seconds: a font, line height or display
+// change moves them.
+let rexCells: { block: string; at: number; cell: Cell } | undefined
+// Work in flight per key (a picture read, a sips run), shared by the drawings that want it at once.
+const inFlight = new Map<string, Promise<unknown>>()
 
 function hash(s: string): string {
   let h = 5381
   for (let i = 0; i < s.length; i++) h = (h * 33) ^ s.charCodeAt(i)
   return (h >>> 0).toString(36)
+}
+
+/**
+ * `make()`'s result, shared with every drawing that asks for `key` while it runs. Scrolling redraws a reply many times
+ * a second and a newer drawing ends the calls of the one it replaces, so a run that ends without a result is made
+ * again by the drawing still waiting for it.
+ */
+async function once<T>(key: string, make: () => Promise<T | undefined>): Promise<T | undefined> {
+  let running = inFlight.get(key) as Promise<T | undefined> | undefined
+  while (running !== undefined) {
+    const shared = await running.catch(() => undefined)
+    if (shared !== undefined) return shared
+    const next = inFlight.get(key) as Promise<T | undefined> | undefined
+    running = next === running ? undefined : next
+  }
+  const own = make()
+  inFlight.set(key, own)
+  try {
+    return await own
+  } finally {
+    if (inFlight.get(key) === own) inFlight.delete(key)
+  }
 }
 
 export const register: Register = (on, options) => {
@@ -101,7 +125,9 @@ export const register: Register = (on, options) => {
     async function rexCellSize(): Promise<Cell | undefined> {
       const block = await $.env.get('REX_BLOCK')
       if (!block) return undefined
-      if (rexCells?.block === block && Date.now() - rexCells.at < 5000) return rexCells.cell
+      const known = rexCells?.block === block ? rexCells : undefined
+      const now = await $.clock.now()
+      if (known !== undefined && now - known.at < 5000) return known.cell
       const dir = await $.env.get('REX_BIN_DIR')
       const session = await $.env.get('REX_SESSION')
       let cell: Cell | undefined
@@ -111,7 +137,10 @@ export const register: Register = (on, options) => {
       } catch {
         cell = undefined
       }
-      rexCells = { block, at: Date.now(), cell }
+      // Only Rex's answer is kept. A query cut short (a newer drawing ended this one's calls) or refused says nothing
+      // about the pane: the size Rex gave last stands, and the next drawing asks again.
+      if (cell === undefined) return known?.cell
+      rexCells = { block, at: now, cell }
       return cell
     }
 
@@ -126,9 +155,20 @@ export const register: Register = (on, options) => {
       const key = `${path}\n${stat.mtimeMs}\n${stat.size}`
       const hit = pictures.get(key)
       if (hit !== undefined) return hit
+      const bytes = stat.size
+      const loaded = await once(`load\n${key}`, () => read(path, bytes, key))
+      // A read that failed or was cut short is not kept: the next drawing reads again.
+      if (loaded === undefined) return { kind: 'unshown' }
+      if (pictures.size >= 12) pictures.delete(pictures.keys().next().value as string)
+      pictures.set(key, loaded)
+      return loaded
+    }
+
+    // The file as a picture for `Image`, `unshown` when it is none `Image` can show; undefined when reading it failed.
+    async function read(path: string, bytes: number, key: string): Promise<Loaded | undefined> {
       let loaded: Loaded = { kind: 'unshown' }
       try {
-        if (/\.png$/i.test(path) && stat.size <= MAX_PNG) {
+        if (/\.png$/i.test(path) && bytes <= MAX_PNG) {
           const { base64 } = (await $.fs.read(path, { as: 'bytes' })) as FsBytes
           const size = pngSize(base64)
           if (size !== undefined) loaded = { kind: 'picture', picture: { png: base64, ...size } }
@@ -151,10 +191,9 @@ export const register: Register = (on, options) => {
           }
         }
       } catch {
-        // Not readable here, or no `sips` (not macOS): the link still opens it.
+        // Not readable here, no `sips` (not macOS), or cut short by a newer drawing: the link still opens it.
+        return undefined
       }
-      if (pictures.size >= 12) pictures.delete(pictures.keys().next().value as string)
-      pictures.set(key, loaded)
       return loaded
     }
     const loaded = new Map<ImageLine, Loaded>(await Promise.all(images.map(async img => [img, await load(img.path)] as const)))
@@ -169,7 +208,7 @@ export const register: Register = (on, options) => {
           const got = loaded.get(img)
           if (got?.kind !== 'picture') return
           if (rex === undefined) return void pngs.set(img, got.picture.png)
-          const made = await exactPng(img.path, box, rex, tmp)
+          const made = await once(`png\n${img.path}\n${box.columns}x${box.rows}\n${rex.width}x${rex.height}`, () => exactPng(img.path, box, rex, tmp))
           if (made === undefined) return
           pngs.set(img, made.png)
           boxes.set(img, made.box)
@@ -180,7 +219,7 @@ export const register: Register = (on, options) => {
     await Promise.all(
       [...boxes].map(async ([img, box]) => {
         if (pngs.has(img)) return
-        const cells = await halfBlocks(img.path, box, tmp)
+        const cells = await once(`bmp\n${img.path}\n${box.columns}x${box.rows}`, () => halfBlocks(img.path, box, tmp))
         if (cells !== undefined) rasters.set(img, cells)
       }),
     )
