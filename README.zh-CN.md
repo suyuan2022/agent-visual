@@ -183,7 +183,7 @@ pi 里把 `markdown.mermaid` 这个键删掉，就恢复默认。
 
 - 只处理顶格写的 Mermaid 块和图片行，放在列表或引用里的保持原样。
 - 节点外形只画矩形、圆角、菱形，其他 `@{ shape }` 归到这三种；标签只有一行，`<br>` 变成空格。
-- Claude Code 在 Linux 上没有 `sips`，非 PNG 和大于 2 MiB 的 PNG 只显示链接。
+- Claude Code 在 Linux 上没有 `sips`：最长边不超过 2560 像素的 PNG 能画，其他图片只显示链接。通过 ssh 时终端读不到这台机器上的文件，一条回复里的图片改成直接发数据，合计不超过 2 MiB（Claude Code 对一条回复的上限）；放不下的 PNG 同样只显示链接。
 - 在 Claude 桌面 App 的 Code 标签里，Mermaid 块和本机图片由 App 自己显示，能否画 Mermaid 取决于 App 自己的功能开关。插件在那里只负责交规矩；它的画图和 `w=60 center` 这类 title 只在终端生效。
 - 只在 macOS 上测过。
 

@@ -183,7 +183,7 @@ In pi, set `markdown.mermaid` back to its default by deleting the key.
 
 - Only Mermaid blocks and image lines at the top level are handled; inside a list or a quote they stay as written.
 - Nodes are drawn as rectangle, rounded or diamond; other `@{ shape }` values fall back to these. Labels are one line, and `<br>` becomes a space.
-- Claude Code on Linux has no `sips`, so non-PNG images and PNGs over 2 MiB show as a link only.
+- Claude Code on Linux has no `sips`: a PNG up to 2560 pixels on its longest side is drawn, other images show as a link only. Across ssh the terminal cannot read this machine's files, so a reply's pictures go as bytes, together at most 2 MiB (Claude Code's limit for one reply); there a PNG too large for its share shows as a link too.
 - In the Claude desktop app's Code tab, the app itself draws Mermaid blocks and shows local images, and whether it draws Mermaid depends on the app's own feature flag. The plugin only hands over the rules there; its drawing and the `w=60 center` title work in the terminal.
 - Tested on macOS only.
 

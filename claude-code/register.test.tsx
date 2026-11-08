@@ -127,6 +127,8 @@ test('a line that is only a local image is drawn as the picture, sized like pi, 
   const pics = await ui.findAll({ type: 'Image' })
   // On macOS, 320×160 px at 14×28 px a cell is 23×6 cells; `w=20` keeps the shape at 20×5.
   expect(pics.map(p => [p.props.columns, p.props.rows])).toEqual([[23, 6], [20, 5]])
+  // Ghostty reads the file itself and scales it to the box.
+  expect(pics.map(p => p.props.source)).toEqual([{ file: PIC, format: 'png' }, { file: PIC, format: 'png' }])
   expect(await ui.find({ type: 'Link' })).toBeUndefined()
   await ui.press({ key: `open:${text.indexOf('![首页]')}` })
   expect(opened).toEqual([['open', PIC]])
@@ -211,11 +213,65 @@ test('in Rex under CLAUDE_CODE_FORCE_TERMINAL_IMAGES a picture is made at the bo
   rexPane(on, runs)
   mock.env(on, { ...REX, CLAUDE_CODE_FORCE_TERMINAL_IMAGES: '1' })
   const ui = await $.ui.mount({ plugin: 'agent-visual', surface: 'terminal', component: 'AssistantMessage', props: { text: `![图](${PIC})`, isFirstOfReply: true }, viewport })
-  // 320×160 px at Rex's 22×48 is 13×3 cells, made at 286×144 px.
+  // 320×160 px at Rex's 22×48 is 13×3 cells, made at 286×144 px into a file Rex reads.
   const pics = await ui.findAll({ type: 'Image' })
-  expect(pics.map(p => [p.props.columns, p.props.rows, (p.props.source as { png: string }).png])).toEqual([[13, 3, EXACT_HEAD]])
+  expect(pics.map(p => [p.props.columns, p.props.rows])).toEqual([[13, 3]])
+  const source = pics[0]!.props.source as { file: string; format: string }
+  expect(source.format).toBe('png')
+  expect(source.file).toMatch(/^\/tmp\/t\/agent-visual-\w+\.png$/)
+  expect(runs.find(r => r[0] === 'sips')?.at(-1)).toBe(source.file)
   expect(runs[0]).toEqual(['/opt/rex/rex', 'block', 'call', '-s', 'session:s', '-b', 'block:b', 'size'])
   expect(runs.find(r => r[0] === 'sips')?.slice(0, 7)).toEqual(['sips', '-s', 'format', 'png', '-z', '144', '286'])
+  await ui.unmount()
+})
+
+// Five screenshots of 600 KB each: as bytes the reply's Images would hold 3 MB, past the engine's 2 MiB a drawing, and
+// the engine would refuse the whole tree and draw the reply as text.
+const BIG = PNG_HEAD + 'A'.repeat(800_000)
+const FIVE = [1, 2, 3, 4, 5].map(k => `![第 ${k} 张](/pictures/big-${k}.png)`).join('\n\n')
+
+test('in Rex a reply of five large pictures draws all five, each from a file, none as bytes', async ($, on) => {
+  engine(on)
+  mock.clock(on)
+  on('fs.stat', async (_$, e) => (e.path.startsWith('/pictures/big-') || e.path.startsWith('/tmp/t/agent-visual-') ? { value: { kind: 'file' as const, size: 600_000, mtimeMs: 1, isLink: false } } : { deny: `ENOENT: ${e.path}` }))
+  // The picture and the PNG sips makes of it at Rex's box pixels are both large.
+  on('fs.read', async (_$, e) => (e.path.startsWith('/pictures/big-') || e.path.startsWith('/tmp/t/agent-visual-') ? { value: { base64: BIG } } : { deny: `ENOENT: ${e.path}` }))
+  on('process.run', async (_$, e) => {
+    const stdout = e.argv[0] === '/opt/rex/rex' ? '{"columns":53,"rows":37,"cell_width_px":22,"cell_height_px":48}' : ''
+    return { value: { exitCode: 0, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
+  })
+  mock.env(on, { ...REX, REX_BLOCK: 'block:five', CLAUDE_CODE_FORCE_TERMINAL_IMAGES: '1' })
+  const ui = await $.ui.mount({ plugin: 'agent-visual', surface: 'terminal', component: 'AssistantMessage', props: { text: FIVE, isFirstOfReply: true }, viewport })
+  const pics = await ui.findAll({ type: 'Image' })
+  expect(pics).toHaveLength(5)
+  expect(pics.every(p => 'file' in (p.props.source as object))).toBe(true)
+  expect(await ui.find({ type: 'Text', text: /engine:/ })).toBeUndefined()
+  await ui.unmount()
+})
+
+test('across ssh the pictures go as bytes, shrunk to share the 2 MiB a drawing holds', async ($, on) => {
+  engine(on)
+  const runs: string[][] = []
+  on('fs.stat', async (_$, e) => {
+    if (e.path.startsWith('/pictures/big-')) return { value: { kind: 'file' as const, size: 900_000, mtimeMs: 1, isLink: false } }
+    if (e.path.startsWith('/tmp/t/agent-visual-')) return { value: { kind: 'file' as const, size: 300_000, mtimeMs: 2, isLink: false } }
+    return { deny: `ENOENT: ${e.path}` }
+  })
+  on('fs.read', async (_$, e) => {
+    if (e.path.startsWith('/pictures/big-')) return { value: { base64: BIG } }
+    if (e.path.startsWith('/tmp/t/agent-visual-')) return { value: { base64: EXACT_HEAD } }
+    return { deny: `ENOENT: ${e.path}` }
+  })
+  on('process.run', async (_$, e) => {
+    runs.push([...e.argv])
+    return { value: { exitCode: 0, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
+  })
+  mock.env(on, { ...ghostty, TMPDIR: '/tmp/t/', SSH_CONNECTION: '10.0.0.2 51000 10.0.0.1 22' })
+  const ui = await $.ui.mount({ plugin: 'agent-visual', surface: 'terminal', component: 'AssistantMessage', props: { text: FIVE, isFirstOfReply: true }, viewport })
+  const pics = await ui.findAll({ type: 'Image' })
+  // 900 KB each is past a fifth of 90% of 2 MiB (377 KB), so each goes as a copy sips shrank to 1600 px.
+  expect(pics.map(p => p.props.source)).toEqual(Array(5).fill({ png: EXACT_HEAD }))
+  expect(runs.filter(r => r[0] === 'sips' && r.includes('-Z') && r.includes('1600'))).toHaveLength(5)
   await ui.unmount()
 })
 
