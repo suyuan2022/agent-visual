@@ -10,7 +10,7 @@ import { pathToFileURL } from "node:url";
 import type { MarkdownTransformContext } from "@earendil-works/pi-coding-agent";
 import { t, replyLang } from "../core/i18n.ts";
 import { Image, allocateImageId, getCapabilities, getCellDimensions, getImageDimensions, hyperlink, renderImage } from "@earendil-works/pi-tui";
-import { pngBands } from "./png-bands.ts";
+import { kittyPng, pngBands } from "./png-bands.ts";
 
 export const MAX_HEIGHT_RATIO = 0.85;
 const MIME: Record<string, string> = { ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp" };
@@ -76,7 +76,9 @@ function renderOne(alt: string, rawPath: string, title: string | undefined, avai
 	const hot = hyperlink("\u00a0".repeat(cols), url);
 	const rows = lines.length;
 	if (imgIdx === 0 && getCapabilities().images === "kitty") {
-		const bands = bandStrips(key, data, mime, rows, cols);
+		// kitty 只收 PNG：JPG、GIF、WebP 已经由 pi 转成 PNG 放进了第一行的传输转义码里，取出来同样按 PNG 分条。
+		const png = mime === "image/png" ? data : kittyPng(lines[0]);
+		const bands = png ? bandStrips(key, png, rows, cols) : null;
 		if (bands) return bands.map((l) => codeSpan(pad + l + hot)).join("\n\n");
 		const strips = kittyStrips(lines[0], data, mime, rows);
 		// 后面各条把链接格子写在前面、退回光标再放图：pi 往上翻时会把「紧挨屏幕顶上的那行图」
@@ -99,13 +101,13 @@ function renderOne(alt: string, rawPath: string, title: string | undefined, avai
 
 // 分条显示：Markdown 里每段图片行之间必有一个空行，所以一条占两行（自己那行加下面的空行）。
 //
-// PNG：切成每条一张的小图，每条自带自己那段的数据，哪条先进屏幕就先显示哪条；
+// 切成每条一张的小 PNG，每条自带自己那段的数据，哪条先进屏幕就先显示哪条；
 // pi 按每张小图登记的尺寸裁剪、缓存和回收。
 const bandCache = new Map<string, string[] | null>();
-function bandStrips(key: string, data: string, mime: string, rows: number, cols: number): string[] | null {
-	if (mime !== "image/png" || rows < 3) return null;
+function bandStrips(key: string, png: string, rows: number, cols: number): string[] | null {
+	if (rows < 3) return null;
 	if (bandCache.has(key)) return bandCache.get(key)!;
-	const lines = cutBands(data, mime, rows, cols);
+	const lines = cutBands(png, "image/png", rows, cols);
 	bandCache.set(key, lines);
 	if (bandCache.size > 30) bandCache.delete(bandCache.keys().next().value!);
 	return lines;
@@ -134,7 +136,7 @@ function cutBands(data: string, mime: string, rows: number, cols: number): strin
 	return lines;
 }
 
-// 其他格式（JPG、GIF、WebP）：第一条带整张图的数据，后面每条用 a=p 放同一张图的下一段
+// 切不成小图时（隔行扫描的 PNG、数据坏了）：第一条带整张图的数据，后面每条用 a=p 放同一张图的下一段
 // （按源图像素裁），整张图只传一次。缺点是第一条没进过屏幕时数据还没发，下面各条画不出来。
 function kittyStrips(first: string, data: string, mime: string, rows: number): string[] | null {
 	const m = /^\x1b_G([^;]*);/.exec(first);

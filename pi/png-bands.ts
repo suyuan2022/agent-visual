@@ -126,3 +126,11 @@ export function unfilter(raw: Buffer, at: number, stride: number, bpp: number, p
 			return false;
 	}
 }
+
+// kitty 传输转义码里带的整张 PNG（base64）：把各段 \x1b_G…;数据\x1b\\ 的数据接起来。
+// 不是 f=100（PNG）的传输返回 null。
+export function kittyPng(sequence: string): string | null {
+	const parts = [...sequence.matchAll(/\x1b_G([^;\x1b]*);([^\x1b]*)\x1b\\/g)];
+	if (!parts.length || !/(?:^|,)f=100(?:,|$)/.test(parts[0][1])) return null;
+	return parts.map((p) => p[2]).join("") || null;
+}

@@ -1,7 +1,7 @@
 // 运行：bun test
 import { describe, expect, test } from "bun:test";
 import { deflateSync, inflateSync } from "node:zlib";
-import { pngBands, unfilter } from "./png-bands.ts";
+import { kittyPng, pngBands, unfilter } from "./png-bands.ts";
 
 // 造一张 RGB 图，每行轮流用五种滤波编码，这样切口落在任何一行上都可能遇到依赖上一行的滤波。
 function makePng(width: number, height: number, channels = 3) {
@@ -85,5 +85,18 @@ describe("pngBands", () => {
 		const interlaced = Buffer.from(png);
 		interlaced[8 + 8 + 12] = 1; // IHDR 的隔行扫描字节
 		expect(pngBands(interlaced, [0, 2])).toBeNull();
+	});
+});
+
+describe("kittyPng", () => {
+	test("把分成几段传的 PNG 接回整张", () => {
+		const b64 = makePng(9, 9).png.toString("base64");
+		const seq = `\x1b_Ga=T,f=100,q=2,i=7,c=4,r=2,m=1;${b64.slice(0, 40)}\x1b\\\x1b_Gm=1;${b64.slice(40, 80)}\x1b\\\x1b_Gm=0;${b64.slice(80)}\x1b\\`;
+		expect(kittyPng(seq)).toBe(b64);
+	});
+
+	test("不是 PNG 的传输、只放图不传数据时返回 null", () => {
+		expect(kittyPng("\x1b_Ga=T,f=32,s=1,v=1;AAAA\x1b\\")).toBeNull();
+		expect(kittyPng("\x1b_Ga=p,i=7,p=2,C=1,q=2\x1b\\")).toBeNull();
 	});
 });
