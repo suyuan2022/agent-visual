@@ -8,6 +8,7 @@ import type { Diagram, Fit } from '../core/core.ts'
 import { bmpToHalfBlocks, cellSize, findImages, imageBox, pngSize, rexCell } from './images.ts'
 import type { Cell, ImageLine } from './images.ts'
 import { registerRules } from './rules.ts'
+import { liftTables } from './tables.ts'
 import type { Role } from '../core/vendor/lovely-mermaid/index.js'
 
 // The `edgeColor` choices in plugin.json, as theme keys so every theme carries them.
@@ -111,13 +112,14 @@ export const register: Register = (on, options) => {
 
   on('ui.render', { component: 'AssistantMessage' }, async ($, e, next) => {
     if (e.surface !== 'terminal' || e.props.isSummary) return next(e)
-    const text = e.props.text
+    // The engine draws a table inside a list item as raw pipes, one at the top level as a grid.
+    const text = liftTables(e.props.text)
     // An unclosed fence is still streaming: the engine draws its source until it closes.
     const diagrams = findDiagrams(text).filter(d => d.closed)
     const pictured = text.includes('![')
     const home = pictured ? await $.env.get('HOME') : undefined
     const images = pictured ? findImages(text, home) : []
-    if (diagrams.length === 0 && images.length === 0) return next(e)
+    if (diagrams.length === 0 && images.length === 0) return text === e.props.text ? next(e) : next({ ...e, props: { ...e.props, text } })
 
     const columns = (e.viewport?.columns ?? 80) - GUTTER
     const lang = replyLang(text)
@@ -125,7 +127,7 @@ export const register: Register = (on, options) => {
 
     if (needsWholeMarkdown(text) || !markdownSafe(text)) {
       const rewritten = plainRewrite(text, diagrams, drawn)
-      return rewritten === text ? next(e) : next({ ...e, props: { ...e.props, text: rewritten } })
+      return rewritten === e.props.text ? next(e) : next({ ...e, props: { ...e.props, text: rewritten } })
     }
 
     // The engine draws an `Image` only where the terminal speaks kitty graphics with Unicode placeholders: kitty

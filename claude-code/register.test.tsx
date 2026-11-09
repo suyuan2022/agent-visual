@@ -54,6 +54,23 @@ test('a streaming block, other surfaces and replies without mermaid go to the en
   }
 })
 
+test('a table inside a list item reaches the engine at the top level, beside a diagram too', async ($, on) => {
+  engine(on)
+  const table = '| 选法 | 代价 |\n|---|---|\n| A | 多一次请求 |'
+  const nested = `1. 修不修\n2. 怎么处理\n\n${table.replace(/^/gm, '   ')}\n\n   ➡️ 建议 A。\n3. 关键词`
+  const lifted = `1. 修不修\n2. 怎么处理\n\n${table}\n\n➡️ 建议 A。\n\n3. 关键词`
+  const alone = await $.ui.mount({ plugin: 'agent-visual', surface: 'terminal', component: 'AssistantMessage', props: { text: nested, isFirstOfReply: true }, viewport })
+  expect(await alone.find({ type: 'Text', text: `engine: ${lifted}` })).toBeDefined()
+  await alone.unmount()
+  const top = `${table}\n\n结束`
+  const untouched = await $.ui.mount({ plugin: 'agent-visual', surface: 'terminal', component: 'AssistantMessage', props: { text: top, isFirstOfReply: true }, viewport })
+  expect(await untouched.find({ type: 'Text', text: `engine: ${top}` })).toBeDefined()
+  await untouched.unmount()
+  const withDiagram = await $.ui.mount({ plugin: 'agent-visual', surface: 'terminal', component: 'AssistantMessage', props: { text: `${REPLY}\n\n${nested}`, isFirstOfReply: true }, viewport })
+  expect(await withDiagram.find({ type: 'Markdown', text: /^就这样。\n\n1\. 修不修\n2\. 怎么处理\n\n\| 选法/ })).toBeDefined()
+  await withDiagram.unmount()
+})
+
 test('a reply with footnotes stays one Markdown, the block swapped for plain art', async ($, on) => {
   engine(on)
   const text = `看图[^1]：\n\n\`\`\`mermaid\n${FLOW}\n\`\`\`\n\n[^1]: 脚注`
